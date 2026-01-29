@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Added
+- Geometry hash function to root namespace
 
 ## [0.0.4] - 2026-01-29
 ### Changed
