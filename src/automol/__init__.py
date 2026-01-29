@@ -1,6 +1,6 @@
 """automol."""
 
-__version__ = "0.0.4"
+__version__ = "0.0.5"
 
 from . import geom, types
 from .geom import Geometry, geometry_hash
