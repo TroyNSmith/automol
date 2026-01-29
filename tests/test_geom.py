@@ -21,7 +21,7 @@ def test__hash(water: Geometry) -> None:
         symbols=["O", "H", "H"],
         coordinates=[[0, 0, 0], [1, 0, 0], [0, 1.000000000000001, 0]],  # ty:ignore[invalid-argument-type]
     )
-    assert geom.hash(water) == geom.hash(water2)
+    assert geom.geometry_hash(water) == geom.geometry_hash(water2)
 
 
 def test__center_of_mass(water: Geometry) -> None:

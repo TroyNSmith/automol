@@ -5,6 +5,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.0.4] - 2026-01-29
+### Changed
+- Renamed geometry hash function to `geometry_hash()` to avoid shadowing built-in `hash()`
+
 ## [0.0.3] - 2026-01-28
 ### Added
 - Geometry hash function

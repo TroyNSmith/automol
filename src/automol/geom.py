@@ -70,7 +70,7 @@ def from_rdkit_molecule(mol: rd.Mol) -> Geometry:
 
 
 # Properties
-def hash(geo: Geometry, decimals: int = 6) -> str:  # noqa: A001
+def geometry_hash(geo: Geometry, decimals: int = 6) -> str:
     """
     Generate geometry hash string.
 
