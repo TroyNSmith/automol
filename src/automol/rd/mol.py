@@ -2,7 +2,7 @@
 
 import numpy as np
 from rdkit import Chem
-from rdkit.Chem import Descriptors, Mol
+from rdkit.Chem import Descriptors, Mol, rdDetermineBonds
 from rdkit.Chem.rdDistGeom import EmbedMolecule
 
 from ..types import FloatArray
@@ -31,6 +31,25 @@ def from_smiles(smi: str, *, with_coords: bool = False) -> Mol:
     if with_coords:
         add_coordinates(mol, in_place=True)
     return mol
+
+
+def from_xyz_block(xyz_block: str) -> Mol:
+    """
+    Get RDKit molecule from Geometry.
+
+    Parameters
+    ----------
+    xyz_block
+        Formatted xyz string.
+
+    Returns
+    -------
+        RDKit molecule.
+    """
+    raw_mol = Chem.MolFromXYZBlock(xyz_block)
+    conn_mol = Chem.Mol(raw_mol)
+    rdDetermineBonds.DetermineConnectivity(conn_mol)
+    return conn_mol
 
 
 # Properties
@@ -108,6 +127,22 @@ def spin(mol: Mol) -> int:
         Number of unpaired electrons as an integer.
     """
     return Descriptors.NumRadicalElectrons(mol)
+
+
+def inchi(mol: Mol) -> str:
+    """
+    Get standard InChI string from Mol.
+
+    Parameters
+    ----------
+    mol
+        RDKit molecule object.
+
+    Returns
+    -------
+        InChI identifier.
+    """
+    return Chem.inchi.MolBlockToInchi(Chem.rdmolfiles.MolToMolBlock(mol))
 
 
 # Boolean properties

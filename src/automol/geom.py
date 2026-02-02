@@ -44,6 +44,30 @@ class Geometry(BaseModel):
         """Get atomic numbers."""
         return list(map(element.number, self.symbols))
 
+    @property
+    def xyz_block(self) -> str:
+        """Get formatted xyz block."""
+        lines = [f"{len(self.symbols)}", ""]
+        for sym, (x, y, z) in zip(self.symbols, self.coordinates, strict=True):
+            lines.append(f"{sym:<2} {x:12.8f} {y:12.8f} {z:12.8f}")
+        return "\n".join(lines)
+
+
+def to_rdkit_molecule(geo: Geometry) -> rd.Mol:
+    """
+    Generate RDKit molecule from Geometry.
+
+    Parameters
+    ----------
+    mol
+        RDKit molecule.
+
+    Returns
+    -------
+        Geometry.
+    """
+    return rd.mol.from_xyz_block(geo.xyz_block)
+
 
 def from_rdkit_molecule(mol: rd.Mol) -> Geometry:
     """
