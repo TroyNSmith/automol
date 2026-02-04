@@ -4,6 +4,8 @@ import hashlib
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict
+from rdkit import Chem
+from rdkit.Chem import Mol, rdDetermineBonds
 
 from . import element, rd
 from .types import CoordinatesField, FloatArray
@@ -44,29 +46,34 @@ class Geometry(BaseModel):
         """Get atomic numbers."""
         return list(map(element.number, self.symbols))
 
-    @property
-    def xyz_block(self) -> str:
-        """Get formatted xyz block."""
+    def to_mol(self) -> Mol:
+        """
+        Instantiate an rdkit Mol from a Geometry.
+
+        Returns
+        -------
+        Mol
+            rdkit Mol instance.
+        """
+        raw_mol = Chem.MolFromXYZBlock(self.to_xyz())
+        conn_mol = Chem.Mol(raw_mol)
+        rdDetermineBonds.DetermineConnectivity(conn_mol)
+        return conn_mol
+
+    def to_xyz(self) -> str:
+        """
+        Return geometry as a formatted xyz block.
+
+        Returns
+        -------
+        xyz
+            Formatted xyz block.
+        """
         lines = [f"{len(self.symbols)}", ""]
         for sym, (x, y, z) in zip(self.symbols, self.coordinates, strict=True):
             lines.append(f"{sym:<2} {x:12.8f} {y:12.8f} {z:12.8f}")
+
         return "\n".join(lines)
-
-
-def to_rdkit_molecule(geo: Geometry) -> rd.Mol:
-    """
-    Generate RDKit molecule from Geometry.
-
-    Parameters
-    ----------
-    mol
-        RDKit molecule.
-
-    Returns
-    -------
-        Geometry.
-    """
-    return rd.mol.from_xyz_block(geo.xyz_block)
 
 
 def from_rdkit_molecule(mol: rd.Mol) -> Geometry:
