@@ -2,7 +2,7 @@
 
 import pytest
 
-from automol import smiles
+from automol import geom
 
 
 @pytest.mark.parametrize(
@@ -14,7 +14,7 @@ from automol import smiles
 )
 def test__geometry(smi: str, symbols: list[str], charge: int, spin: int) -> None:
     """Test geometry from SMILES."""
-    geo = smiles.geometry(smi)
+    geo = geom.from_smiles(smi)
     assert geo.symbols == symbols
     assert geo.charge == charge
     assert geo.spin == spin
