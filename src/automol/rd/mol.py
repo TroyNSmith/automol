@@ -85,10 +85,10 @@ def to_geometry(mol: Mol) -> Geometry:
         mol = add_coordinates(mol)
 
     return Geometry(
-        symbols=mol.symbols(mol),
-        coordinates=mol.coordinates(mol),
-        charge=mol.charge(mol),
-        spin=mol.spin(mol),
+        symbols=symbols(mol),
+        coordinates=coordinates(mol),
+        charge=charge(mol),
+        spin=spin(mol),
     )
 
 

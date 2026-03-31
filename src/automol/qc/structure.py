@@ -3,7 +3,7 @@
 import pint
 from qcio import Structure
 
-from automol import Geometry
+from automol.geom import Geometry
 
 
 def from_geometry(geo: Geometry) -> Structure:
