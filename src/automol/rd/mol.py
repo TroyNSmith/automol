@@ -5,7 +5,6 @@ from rdkit import Chem
 from rdkit.Chem import Descriptors, Mol, rdDetermineBonds
 from rdkit.Chem.rdDistGeom import EmbedMolecule
 
-from ..geom import Geometry, to_xyz
 from ..types import FloatArray
 
 
@@ -51,45 +50,6 @@ def from_xyz_block(xyz_block: str) -> Mol:
     conn_mol = Chem.Mol(raw_mol)
     rdDetermineBonds.DetermineConnectivity(conn_mol)
     return conn_mol
-
-
-def from_geometry(geo: Geometry) -> Mol:
-    """
-    Instantiate an rdkit Mol from a Geometry.
-
-    Returns
-    -------
-    Mol
-        rdkit Mol instance.
-    """
-    raw_mol = Chem.MolFromXYZBlock(to_xyz(geo))
-    conn_mol = Chem.Mol(raw_mol)
-    rdDetermineBonds.DetermineConnectivity(conn_mol)
-    return conn_mol
-
-
-def to_geometry(mol: Mol) -> Geometry:
-    """
-    Generate geometry from RDKit molecule.
-
-    Parameters
-    ----------
-    mol
-        RDKit molecule.
-
-    Returns
-    -------
-        Geometry.
-    """
-    if not has_coordinates(mol):
-        mol = add_coordinates(mol)
-
-    return Geometry(
-        symbols=symbols(mol),
-        coordinates=coordinates(mol),
-        charge=charge(mol),
-        spin=spin(mol),
-    )
 
 
 def to_inchi(mol: Mol) -> str:

@@ -4,8 +4,10 @@ import hashlib
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict
+from rdkit import Chem
+from rdkit.Chem import Mol, rdDetermineBonds
 
-from . import element
+from . import element, rd
 from .types import CoordinatesField, FloatArray
 
 
@@ -60,6 +62,63 @@ def to_xyz(geo: Geometry) -> str:
         lines.append(f"{sym:<2} {x:12.8f} {y:12.8f} {z:12.8f}")
 
     return "\n".join(lines)
+
+
+def to_mol(geo: Geometry) -> Mol:
+    """
+    Instantiate an rdkit Mol from a Geometry.
+
+    Returns
+    -------
+    Mol
+        rdkit Mol instance.
+    """
+    raw_mol = Chem.MolFromXYZBlock(to_xyz(geo))
+    conn_mol = Chem.Mol(raw_mol)
+    rdDetermineBonds.DetermineConnectivity(conn_mol)
+    return conn_mol
+
+
+def from_mol(mol: Mol) -> Geometry:
+    """
+    Generate geometry from RDKit molecule.
+
+    Parameters
+    ----------
+    mol
+        RDKit molecule.
+
+    Returns
+    -------
+        Geometry.
+    """
+    if not rd.mol.has_coordinates(mol):
+        mol = rd.mol.add_coordinates(mol)
+
+    return Geometry(
+        symbols=rd.mol.symbols(mol),
+        coordinates=rd.mol.coordinates(mol),
+        charge=rd.mol.charge(mol),
+        spin=rd.mol.spin(mol),
+    )
+
+
+def from_smiles(smi: str) -> Geometry:
+    """
+    Instantiate Geometry from SMILES string.
+
+    Parameters
+    ----------
+    smi
+        SMILES formatted string.
+
+    Returns
+    -------
+    xyz
+        Formatted xyz block.
+    """
+    mol = rd.mol.from_smiles(smi)
+    return from_mol(mol)
 
 
 # Properties
