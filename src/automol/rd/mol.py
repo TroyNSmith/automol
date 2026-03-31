@@ -9,7 +9,7 @@ from ..types import FloatArray
 
 
 # Importers / Exporters
-def from_smiles(smi: str, *, with_coords: bool = False) -> Mol:
+def mol_from_smiles(smi: str, *, with_coords: bool = False) -> Mol:
     """
     Get RDKit molecule from SMILES string.
 
@@ -33,7 +33,7 @@ def from_smiles(smi: str, *, with_coords: bool = False) -> Mol:
     return mol
 
 
-def from_xyz_block(xyz_block: str) -> Mol:
+def mol_from_xyz_block(xyz_block: str) -> Mol:
     """
     Get RDKit molecule from Geometry.
 
@@ -52,7 +52,7 @@ def from_xyz_block(xyz_block: str) -> Mol:
     return conn_mol
 
 
-def to_inchi(mol: Mol) -> str:
+def mol_to_inchi(mol: Mol) -> str:
     """
     Get standard InChI string from Mol.
 

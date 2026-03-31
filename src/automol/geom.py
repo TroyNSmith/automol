@@ -48,9 +48,14 @@ class Geometry(BaseModel):
 
 
 # Importers / Exporters
-def to_xyz(geo: Geometry) -> str:
+def geo_to_xyz_block(geo: Geometry) -> str:
     """
     Return geometry as formatted xyz block.
+
+    Parameters
+    ----------
+    geo
+        Geometry object.
 
     Returns
     -------
@@ -64,22 +69,27 @@ def to_xyz(geo: Geometry) -> str:
     return "\n".join(lines)
 
 
-def to_mol(geo: Geometry) -> Mol:
+def geo_to_mol(geo: Geometry) -> Mol:
     """
     Instantiate an rdkit Mol from a Geometry.
+
+    Parameters
+    ----------
+    geo
+        Geometry object.
 
     Returns
     -------
     Mol
         rdkit Mol instance.
     """
-    raw_mol = Chem.MolFromXYZBlock(to_xyz(geo))
+    raw_mol = Chem.MolFromXYZBlock(geo_to_xyz_block(geo))
     conn_mol = Chem.Mol(raw_mol)
     rdDetermineBonds.DetermineConnectivity(conn_mol)
     return conn_mol
 
 
-def from_mol(mol: Mol) -> Geometry:
+def geo_from_mol(mol: Mol) -> Geometry:
     """
     Generate geometry from RDKit molecule.
 
@@ -103,7 +113,7 @@ def from_mol(mol: Mol) -> Geometry:
     )
 
 
-def from_smiles(smi: str) -> Geometry:
+def geo_from_smiles(smi: str) -> Geometry:
     """
     Instantiate Geometry from SMILES string.
 
@@ -117,8 +127,26 @@ def from_smiles(smi: str) -> Geometry:
     xyz
         Formatted xyz block.
     """
-    mol = rd.mol.from_smiles(smi)
-    return from_mol(mol)
+    mol = rd.mol.mol_from_smiles(smi)
+    return geo_from_mol(mol)
+
+
+def geo_to_inchi(geo: Geometry) -> str:
+    """
+    Provide InChI string from Geometry.
+
+    Parameters
+    ----------
+    geo
+        Geometry object.
+
+    Returns
+    -------
+    xyz
+        Formatted xyz block.
+    """
+    mol = geo_to_mol(geo)
+    return rd.mol.mol_to_inchi(mol)
 
 
 # Properties
