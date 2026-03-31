@@ -5,10 +5,11 @@ from rdkit import Chem
 from rdkit.Chem import Descriptors, Mol, rdDetermineBonds
 from rdkit.Chem.rdDistGeom import EmbedMolecule
 
+from ..geom import Geometry, to_xyz
 from ..types import FloatArray
 
 
-# Getters / Setters
+# Importers / Exporters
 def from_smiles(smi: str, *, with_coords: bool = False) -> Mol:
     """
     Get RDKit molecule from SMILES string.
@@ -51,6 +52,46 @@ def from_xyz_block(xyz_block: str) -> Mol:
     rdDetermineBonds.DetermineConnectivity(conn_mol)
     return conn_mol
 
+
+def from_geometry(geo: Geometry) -> Mol:
+    """
+    Instantiate an rdkit Mol from a Geometry.
+
+    Returns
+    -------
+    Mol
+        rdkit Mol instance.
+    """
+    raw_mol = Chem.MolFromXYZBlock(to_xyz(geo))
+    conn_mol = Chem.Mol(raw_mol)
+    rdDetermineBonds.DetermineConnectivity(conn_mol)
+    return conn_mol
+
+
+def to_geometry(mol: Mol) -> Geometry:
+    """
+    Generate geometry from RDKit molecule.
+
+    Parameters
+    ----------
+    mol
+        RDKit molecule.
+
+    Returns
+    -------
+        Geometry.
+    """
+    if not has_coordinates(mol):
+        mol = add_coordinates(mol)
+
+    return Geometry(
+        symbols=mol.symbols(mol),
+        coordinates=mol.coordinates(mol),
+        charge=mol.charge(mol),
+        spin=mol.spin(mol),
+    )
+
+
 def to_inchi(mol: Mol) -> str:
     """
     Get standard InChI string from Mol.
@@ -65,6 +106,7 @@ def to_inchi(mol: Mol) -> str:
         InChI identifier.
     """
     return Chem.inchi.MolBlockToInchi(Chem.rdmolfiles.MolToMolBlock(mol))
+
 
 # Properties
 def symbols(mol: Mol) -> list[str]:

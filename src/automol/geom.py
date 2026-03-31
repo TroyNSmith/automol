@@ -4,10 +4,8 @@ import hashlib
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict
-from rdkit import Chem
-from rdkit.Chem import Mol, rdDetermineBonds
 
-from . import element, rd
+from . import element
 from .types import CoordinatesField, FloatArray
 
 
@@ -47,7 +45,7 @@ class Geometry(BaseModel):
         return list(map(element.number, self.symbols))
 
 
-# Getters / Setters
+# Importers / Exporters
 def to_xyz(geo: Geometry) -> str:
     """
     Return geometry as formatted xyz block.
@@ -63,59 +61,6 @@ def to_xyz(geo: Geometry) -> str:
 
     return "\n".join(lines)
 
-
-def to_mol(geo: Geometry) -> Mol:
-    """
-    Instantiate an rdkit Mol from a Geometry.
-
-    Returns
-    -------
-    Mol
-        rdkit Mol instance.
-    """
-    raw_mol = Chem.MolFromXYZBlock(to_xyz(geo))
-    conn_mol = Chem.Mol(raw_mol)
-    rdDetermineBonds.DetermineConnectivity(conn_mol)
-    return conn_mol
-
-
-def from_mol(mol: rd.Mol) -> Geometry:
-    """
-    Generate geometry from RDKit molecule.
-
-    Parameters
-    ----------
-    mol
-        RDKit molecule.
-
-    Returns
-    -------
-        Geometry.
-    """
-    if not rd.mol.has_coordinates(mol):
-        mol = rd.mol.add_coordinates(mol)
-
-    return Geometry(
-        symbols=rd.mol.symbols(mol),
-        coordinates=rd.mol.coordinates(mol),
-        charge=rd.mol.charge(mol),
-        spin=rd.mol.spin(mol),
-    )
-
-def from_smiles(smi: str) -> Geometry:
-    """Get the geometry corresponding to a SMILES string.
-
-    Parameters
-    ----------
-    smi : str
-        Input SMILES string.
-
-    Returns
-    -------
-        Corresponding geometry.
-    """
-    mol = rd.mol.from_smiles(smi, with_coords=True)
-    return from_mol(mol)
 
 # Properties
 def geometry_hash(geo: Geometry, decimals: int = 6) -> str:
