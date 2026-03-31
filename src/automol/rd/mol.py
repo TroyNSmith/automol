@@ -8,7 +8,7 @@ from rdkit.Chem.rdDistGeom import EmbedMolecule
 from ..types import FloatArray
 
 
-# Generators
+# Getters / Setters
 def from_smiles(smi: str, *, with_coords: bool = False) -> Mol:
     """
     Get RDKit molecule from SMILES string.
@@ -51,6 +51,20 @@ def from_xyz_block(xyz_block: str) -> Mol:
     rdDetermineBonds.DetermineConnectivity(conn_mol)
     return conn_mol
 
+def to_inchi(mol: Mol) -> str:
+    """
+    Get standard InChI string from Mol.
+
+    Parameters
+    ----------
+    mol
+        RDKit molecule object.
+
+    Returns
+    -------
+        InChI identifier.
+    """
+    return Chem.inchi.MolBlockToInchi(Chem.rdmolfiles.MolToMolBlock(mol))
 
 # Properties
 def symbols(mol: Mol) -> list[str]:
@@ -127,22 +141,6 @@ def spin(mol: Mol) -> int:
         Number of unpaired electrons as an integer.
     """
     return Descriptors.NumRadicalElectrons(mol)
-
-
-def inchi(mol: Mol) -> str:
-    """
-    Get standard InChI string from Mol.
-
-    Parameters
-    ----------
-    mol
-        RDKit molecule object.
-
-    Returns
-    -------
-        InChI identifier.
-    """
-    return Chem.inchi.MolBlockToInchi(Chem.rdmolfiles.MolToMolBlock(mol))
 
 
 # Boolean properties

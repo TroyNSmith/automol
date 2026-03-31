@@ -46,37 +46,40 @@ class Geometry(BaseModel):
         """Get atomic numbers."""
         return list(map(element.number, self.symbols))
 
-    def to_mol(self) -> Mol:
-        """
-        Instantiate an rdkit Mol from a Geometry.
 
-        Returns
-        -------
-        Mol
-            rdkit Mol instance.
-        """
-        raw_mol = Chem.MolFromXYZBlock(self.to_xyz())
-        conn_mol = Chem.Mol(raw_mol)
-        rdDetermineBonds.DetermineConnectivity(conn_mol)
-        return conn_mol
+# Getters / Setters
+def to_xyz(geo: Geometry) -> str:
+    """
+    Return geometry as formatted xyz block.
 
-    def to_xyz(self) -> str:
-        """
-        Return geometry as a formatted xyz block.
+    Returns
+    -------
+    xyz
+        Formatted xyz block.
+    """
+    lines = [f"{len(geo.symbols)}", ""]
+    for sym, (x, y, z) in zip(geo.symbols, geo.coordinates, strict=True):
+        lines.append(f"{sym:<2} {x:12.8f} {y:12.8f} {z:12.8f}")
 
-        Returns
-        -------
-        xyz
-            Formatted xyz block.
-        """
-        lines = [f"{len(self.symbols)}", ""]
-        for sym, (x, y, z) in zip(self.symbols, self.coordinates, strict=True):
-            lines.append(f"{sym:<2} {x:12.8f} {y:12.8f} {z:12.8f}")
-
-        return "\n".join(lines)
+    return "\n".join(lines)
 
 
-def from_rdkit_molecule(mol: rd.Mol) -> Geometry:
+def to_mol(geo: Geometry) -> Mol:
+    """
+    Instantiate an rdkit Mol from a Geometry.
+
+    Returns
+    -------
+    Mol
+        rdkit Mol instance.
+    """
+    raw_mol = Chem.MolFromXYZBlock(to_xyz(geo))
+    conn_mol = Chem.Mol(raw_mol)
+    rdDetermineBonds.DetermineConnectivity(conn_mol)
+    return conn_mol
+
+
+def from_mol(mol: rd.Mol) -> Geometry:
     """
     Generate geometry from RDKit molecule.
 
@@ -99,6 +102,20 @@ def from_rdkit_molecule(mol: rd.Mol) -> Geometry:
         spin=rd.mol.spin(mol),
     )
 
+def from_smiles(smi: str) -> Geometry:
+    """Get the geometry corresponding to a SMILES string.
+
+    Parameters
+    ----------
+    smi : str
+        Input SMILES string.
+
+    Returns
+    -------
+        Corresponding geometry.
+    """
+    mol = rd.mol.from_smiles(smi, with_coords=True)
+    return from_mol(mol)
 
 # Properties
 def geometry_hash(geo: Geometry, decimals: int = 6) -> str:
