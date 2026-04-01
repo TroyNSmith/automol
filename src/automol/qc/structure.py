@@ -6,7 +6,7 @@ from qcio import Structure
 from automol.geom import Geometry
 
 
-def struc_from_geometry(geo: Geometry) -> Structure:
+def from_geometry(geo: Geometry) -> Structure:
     """
     Generate QCIO Structure from Geometry.
 
@@ -27,7 +27,7 @@ def struc_from_geometry(geo: Geometry) -> Structure:
     )
 
 
-def struc_to_geometry(struc: Structure) -> Geometry:
+def geometry(struc: Structure) -> Geometry:
     """
     Generate Geometry from QCIO Structure.
 

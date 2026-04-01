@@ -22,8 +22,8 @@ def test_structure_conversion(
     org_geo = Geometry(
         symbols=symbols, coordinates=np.array(coords), charge=charge, spin=spin
     )
-    struc = structure.struc_from_geometry(org_geo)
-    fnl_geo = structure.struc_to_geometry(struc)
+    struc = structure.from_geometry(org_geo)
+    fnl_geo = structure.geometry(struc)
 
     assert fnl_geo.symbols == org_geo.symbols
     assert fnl_geo.charge == org_geo.charge

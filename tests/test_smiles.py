@@ -14,7 +14,7 @@ from automol import geom
 )
 def test__geometry(smi: str, symbols: list[str], charge: int, spin: int) -> None:
     """Test geometry from SMILES."""
-    geo = geom.geo_from_smiles(smi)
+    geo = geom.from_smiles(smi)
     assert geo.symbols == symbols
     assert geo.charge == charge
     assert geo.spin == spin
