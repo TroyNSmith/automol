@@ -27,3 +27,8 @@ def test__hash(water: Geometry) -> None:
 def test__center_of_mass(water: Geometry) -> None:
     """Test center of mass."""
     assert np.allclose(geom.center_of_mass(water), [0.05595744, 0.05595744, 0.0])
+
+
+def test__inchi(water: Geometry) -> None:
+    """Test InChI generation."""
+    assert geom.inchi(water) == "InChI=1S/H2O/h1H2"

@@ -4,6 +4,8 @@ import hashlib
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict
+from rdkit import Chem
+from rdkit.Chem import Mol, rdDetermineBonds
 
 from . import element, rd
 from .types import CoordinatesField, FloatArray
@@ -45,7 +47,49 @@ class Geometry(BaseModel):
         return list(map(element.number, self.symbols))
 
 
-def from_rdkit_molecule(mol: rd.Mol) -> Geometry:
+# Importers / Exporters
+def xyz_block(geo: Geometry) -> str:
+    """
+    Return geometry as formatted xyz block.
+
+    Parameters
+    ----------
+    geo
+        Geometry object.
+
+    Returns
+    -------
+    xyz
+        Formatted xyz block.
+    """
+    lines = [f"{len(geo.symbols)}", ""]
+    for sym, (x, y, z) in zip(geo.symbols, geo.coordinates, strict=True):
+        lines.append(f"{sym:<2} {x:12.8f} {y:12.8f} {z:12.8f}")
+
+    return "\n".join(lines)
+
+
+def rdkit_mol(geo: Geometry) -> Mol:
+    """
+    Instantiate an rdkit Mol from a Geometry.
+
+    Parameters
+    ----------
+    geo
+        Geometry object.
+
+    Returns
+    -------
+    Mol
+        rdkit Mol instance.
+    """
+    raw_mol = Chem.MolFromXYZBlock(xyz_block(geo))
+    conn_mol = Chem.Mol(raw_mol)
+    rdDetermineBonds.DetermineConnectivity(conn_mol)
+    return conn_mol
+
+
+def from_rdkit_mol(mol: Mol) -> Geometry:
     """
     Generate geometry from RDKit molecule.
 
@@ -67,6 +111,42 @@ def from_rdkit_molecule(mol: rd.Mol) -> Geometry:
         charge=rd.mol.charge(mol),
         spin=rd.mol.spin(mol),
     )
+
+
+def from_smiles(smi: str) -> Geometry:
+    """
+    Instantiate Geometry from SMILES string.
+
+    Parameters
+    ----------
+    smi
+        SMILES formatted string.
+
+    Returns
+    -------
+    xyz
+        Formatted xyz block.
+    """
+    mol = rd.mol.from_smiles(smi)
+    return from_rdkit_mol(mol)
+
+
+def inchi(geo: Geometry) -> str:
+    """
+    Provide InChI string from Geometry.
+
+    Parameters
+    ----------
+    geo
+        Geometry object.
+
+    Returns
+    -------
+    xyz
+        Formatted xyz block.
+    """
+    mol = rdkit_mol(geo)
+    return rd.mol.inchi(mol)
 
 
 # Properties

@@ -2,7 +2,8 @@
 
 __version__ = "0.0.5"
 
-from . import geom, types
+from . import geom, qc, types
 from .geom import Geometry, geometry_hash
+from .rd import mol
 
-__all__ = ["geom", "types", "Geometry", "geometry_hash"]
+__all__ = ["geom", "qc", "types", "Geometry", "geometry_hash", "mol"]
