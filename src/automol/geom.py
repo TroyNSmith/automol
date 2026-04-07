@@ -3,7 +3,7 @@
 import hashlib
 
 import numpy as np
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from rdkit import Chem
 from rdkit.Chem import Mol, rdDetermineBonds
 
@@ -36,6 +36,8 @@ class Geometry(BaseModel):
     charge: int = 0
     spin: int = 0
 
+    hash: str | None = Field(default=None)
+
     @property
     def masses(self) -> list[float]:
         """Get isotopic masses."""
@@ -45,6 +47,14 @@ class Geometry(BaseModel):
     def atomic_numbers(self) -> list[float]:
         """Get atomic numbers."""
         return list(map(element.number, self.symbols))
+
+    @model_validator(mode="after")
+    def populate_hash(self) -> "Geometry":
+        """Populate hash immediately after the model is created."""
+        # Only populate if hash wasn't explicitly provided
+        if self.hash is None:
+            self.hash = geometry_hash(self)
+        return self
 
 
 # Importers / Exporters
@@ -191,3 +201,124 @@ def center_of_mass(geo: Geometry) -> FloatArray:
     masses = list(map(element.mass, geo.symbols))
     coords = geo.coordinates
     return np.sum(np.reshape(masses, (-1, 1)) * coords, axis=0) / np.sum(masses)
+
+
+def inertia_moments(geo: Geometry) -> FloatArray:
+    """Compute inertia moments of a Geometry."""
+    coords = geo.coordinates - center_of_mass(geo)
+
+    # Compute inertia tensor
+    norms_sq = np.einsum("ni,ni->n", coords, coords)
+    total = np.sum(geo.masses * norms_sq)
+    i_matrix = total * np.eye(3) - np.einsum("n,ni,nj->ij", geo.masses, coords, coords)
+
+    # Principal moments via symmetric eigendecomposition
+    moments, _ = np.linalg.eigh(i_matrix)
+
+    return np.sort(moments)
+
+
+def kabsch(
+    geo_1: Geometry, geo_2: Geometry, *, heavy_only: bool = False
+) -> tuple[FloatArray, FloatArray, float]:
+    """
+    Compute the optimal rotation / translation to align two Geometries and their RMSD.
+
+    For more information on the numerical method, see https://hunterheidenreich.com/posts/kabsch-algorithm/
+
+    Parameters
+    ----------
+    geo_1
+        Geometry object.
+    geo_2
+        Geometry object.
+    heavy_only
+        If True, only consider heavy atoms.
+
+    Returns
+    -------
+    FloatArray
+        Optimal rotation
+    FloatArray
+        Optimal translation
+    float
+        RMSD
+    """
+    p = np.array(geo_1.coordinates)
+    q = np.array(geo_2.coordinates)
+    p_masses = geo_1.masses
+    q_masses = geo_2.masses
+
+    if heavy_only:
+        mask_p = np.array([s != "H" for s in geo_1.symbols])
+        mask_q = np.array([s != "H" for s in geo_2.symbols])
+        # Contrapositive of "If no heavy atoms exist (e.g., H2, H), skip masking"
+        if np.any(mask_p):
+            p, q = p[mask_p], q[mask_q]
+
+            p_masses = np.asanyarray(p_masses)
+            q_masses = np.asanyarray(q_masses)
+
+            p_masses, q_masses = p_masses[mask_p], q_masses[mask_q]
+
+    if p.shape != q.shape:
+        msg = f"""
+        Input arrays must have same number of dimensions.\n
+        {p.shape = }\n
+        {q.shape = }\n
+        """
+        raise ValueError(msg)
+
+    # --- Optimal translation -------------------
+    centroid_p = center_of_mass(geo_1)
+    centroid_q = center_of_mass(geo_2)
+    t = centroid_p - centroid_q  # Optimal translation
+    # Center the coordinates
+    p = p - centroid_p
+    q = q - centroid_q
+
+    # --- Optimal rotation ----------------------
+    H = np.dot(p.T, q)  # Covariance matrix  # noqa: N806
+    U, _, Vt = np.linalg.svd(H)  # noqa: N806
+
+    if np.linalg.det(np.dot(Vt.T, U.T)) < 0.0:  # Validate right-handed coordinates
+        Vt[-1, :] *= -1.0
+
+    R = np.dot(Vt.T, U.T)  # Optimal rotation  # noqa: N806
+
+    # --- RMSD ----------------------------------
+    rmsd = np.sqrt(np.sum(np.square(np.dot(p, R.T) - q)) / p.shape[0])
+
+    return R, t, rmsd
+
+
+def is_similar(
+    geo_1: Geometry,
+    geo_2: Geometry,
+    *,
+    moi_tol: float = 1e-3,
+    rmsd_tol: float = 1e-1,
+) -> bool:
+    """Check if geometries are similar."""
+    # --- Symbols  ---
+    if geo_1.symbols.sort() != geo_2.symbols.sort():
+        return False
+
+    # --- Geometry Hash ---
+    if geometry_hash(geo_1) == geometry_hash(geo_2):
+        return True
+
+    # --- Moments of Inertia ---
+    moments_1 = np.sort(inertia_moments(geo_1))
+    moments_2 = np.sort(inertia_moments(geo_2))
+
+    eps = 1e-6  # Avoid division by zero in linear molecules
+    moi_diff = np.abs(moments_1 - moments_2) / (moments_2 + eps)
+
+    if np.any(moi_diff > moi_tol):
+        return False
+
+    # --- Heavy Atom RMSD ---
+    _, _, rmsd = kabsch(geo_1, geo_2, heavy_only=True)
+
+    return rmsd < rmsd_tol

@@ -45,6 +45,8 @@ dev = { features = ["dev", "docs"], solve-group = "default"}
 
 [pypi-dependencies]
 qcio = ">=0.16.2, <0.17"
+qcdata = ">=0.17.0, <0.18"
+qccompute = ">=0.13.0, <0.14"
 
 [feature.dev.tasks]
 # Manage pyproject.toml with uv
