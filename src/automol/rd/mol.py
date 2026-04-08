@@ -11,7 +11,7 @@ from ..types import FloatArray
 # Importers / Exporters
 def from_smiles(smi: str, *, with_coords: bool = False) -> Mol:
     """
-    Get RDKit molecule fxrom SMILES string.
+    Get RDKit molecule from SMILES string.
 
     Parameters
     ----------
