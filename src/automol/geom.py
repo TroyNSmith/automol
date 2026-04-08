@@ -6,6 +6,7 @@ import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from rdkit import Chem
 from rdkit.Chem import Mol, rdDetermineBonds
+import scipy
 
 from . import element, rd
 from .types import CoordinatesField, FloatArray
@@ -58,7 +59,7 @@ class Geometry(BaseModel):
 
 
 # Importers / Exporters
-def xyz_block(geo: Geometry) -> str:
+def xyz_block(geom: Geometry) -> str:
     """
     Return geometry as formatted xyz block.
 
@@ -72,14 +73,14 @@ def xyz_block(geo: Geometry) -> str:
     xyz
         Formatted xyz block.
     """
-    lines = [f"{len(geo.symbols)}", ""]
-    for sym, (x, y, z) in zip(geo.symbols, geo.coordinates, strict=True):
+    lines = [f"{len(geom.symbols)}", ""]
+    for sym, (x, y, z) in zip(geom.symbols, geom.coordinates, strict=True):
         lines.append(f"{sym:<2} {x:12.8f} {y:12.8f} {z:12.8f}")
 
     return "\n".join(lines)
 
 
-def rdkit_mol(geo: Geometry) -> Mol:
+def rdkit_mol(geom: Geometry) -> Mol:
     """
     Instantiate an rdkit Mol from a Geometry.
 
@@ -93,7 +94,7 @@ def rdkit_mol(geo: Geometry) -> Mol:
     Mol
         rdkit Mol instance.
     """
-    raw_mol = Chem.MolFromXYZBlock(xyz_block(geo))
+    raw_mol = Chem.MolFromXYZBlock(xyz_block(geom))
     conn_mol = Chem.Mol(raw_mol)
     rdDetermineBonds.DetermineConnectivity(conn_mol)
     return conn_mol
@@ -141,7 +142,7 @@ def from_smiles(smi: str) -> Geometry:
     return from_rdkit_mol(mol)
 
 
-def inchi(geo: Geometry) -> str:
+def inchi(geom: Geometry) -> str:
     """
     Provide InChI string from Geometry.
 
@@ -155,12 +156,12 @@ def inchi(geo: Geometry) -> str:
     xyz
         Formatted xyz block.
     """
-    mol = rdkit_mol(geo)
+    mol = rdkit_mol(geom)
     return rd.mol.inchi(mol)
 
 
 # Properties
-def geometry_hash(geo: Geometry, decimals: int = 6) -> str:
+def geometry_hash(geom: Geometry, decimals: int = 6) -> str:
     """
     Generate geometry hash string.
 
@@ -174,19 +175,19 @@ def geometry_hash(geo: Geometry, decimals: int = 6) -> str:
         Geometry hash string.
     """
     # 1. Convert symbols and coordinates to integers
-    numbers = geo.atomic_numbers
-    icoords = np.rint(geo.coordinates * 10**decimals)
+    numbers = geom.atomic_numbers
+    icoords = np.rint(geom.coordinates * 10**decimals)
     # 2. Generate bytes representation of each field
     numbers_bytes = np.asarray(numbers, dtype=np.dtype("<i8")).tobytes("C")
     icoords_bytes = icoords.astype(np.dtype("<i8")).tobytes("C")
-    charge_bytes = geo.charge.to_bytes(1, byteorder="little", signed=True)
-    spin_bytes = geo.spin.to_bytes(1, byteorder="little", signed=True)
+    charge_bytes = geom.charge.to_bytes(1, byteorder="little", signed=True)
+    spin_bytes = geom.spin.to_bytes(1, byteorder="little", signed=True)
     # 3. Combine all bytes and generate hash
     geo_bytes = b"|".join([numbers_bytes, icoords_bytes, charge_bytes, spin_bytes])
     return hashlib.sha256(geo_bytes).hexdigest()
 
 
-def center_of_mass(geo: Geometry) -> FloatArray:
+def center_of_mass(geom: Geometry) -> FloatArray:
     """
     Calculate geometry center of mass.
 
@@ -198,8 +199,8 @@ def center_of_mass(geo: Geometry) -> FloatArray:
     -------
         Center of mass coordinates.
     """
-    masses = list(map(element.mass, geo.symbols))
-    coords = geo.coordinates
+    masses = list(map(element.mass, geom.symbols))
+    coords = geom.coordinates
     return np.sum(np.reshape(masses, (-1, 1)) * coords, axis=0) / np.sum(masses)
 
 
@@ -293,24 +294,24 @@ def kabsch(
 
 
 def is_similar(
-    geo_1: Geometry,
-    geo_2: Geometry,
+    geom_1: Geometry,
+    geom_2: Geometry,
     *,
     moi_tol: float = 1e-3,
     rmsd_tol: float = 1e-1,
 ) -> bool:
     """Check if geometries are similar."""
     # --- Symbols  ---
-    if geo_1.symbols.sort() != geo_2.symbols.sort():
+    if geom_1.symbols.sort() != geom_2.symbols.sort():
         return False
 
     # --- Geometry Hash ---
-    if geometry_hash(geo_1) == geometry_hash(geo_2):
+    if geometry_hash(geom_1) == geometry_hash(geom_2):
         return True
 
     # --- Moments of Inertia ---
-    moments_1 = np.sort(inertia_moments(geo_1))
-    moments_2 = np.sort(inertia_moments(geo_2))
+    moments_1 = np.sort(inertia_moments(geom_1))
+    moments_2 = np.sort(inertia_moments(geom_2))
 
     eps = 1e-6  # Avoid division by zero in linear molecules
     moi_diff = np.abs(moments_1 - moments_2) / (moments_2 + eps)
@@ -319,6 +320,40 @@ def is_similar(
         return False
 
     # --- Heavy Atom RMSD ---
-    _, _, rmsd = kabsch(geo_1, geo_2, heavy_only=True)
+    _, _, rmsd = kabsch(geom_1, geom_2, heavy_only=True)
 
     return rmsd < rmsd_tol
+
+
+def distance_matrix(geom: Geometry) -> np.ndarray:
+    """Compute the distance matrix for a geometry."""
+    return scipy.spatial.distance_matrix(geom.coordinates, geom.coordinates)
+
+
+def set_dist(
+    geom: Geometry,
+    *,
+    atom_indices: tuple[int, int],
+    dist: float,
+    max_dr: float = 0.25,
+    in_place: bool = False,
+) -> Geometry:
+    """Set distance between two atoms."""
+    geom = geom if in_place else geom.model_copy(deep=True)
+    i, j = atom_indices
+
+    # Compute current distance and unit vector
+    vec = geom.coordinates[j] - geom.coordinates[i]
+    r = np.linalg.norm(vec)
+    unit_vec = vec / r
+
+    # Ensure that change does not exceed max allowable
+    dr = abs(r - dist)
+    if dr > max_dr:
+        msg = f"{dr = } exceeds {max_dr = }."
+        raise ValueError(msg)
+
+    # Atom j coordinates relevant to atom i
+    geom.coordinates[j] = geom.coordinates[i] + (unit_vec * dist)
+
+    return geom
