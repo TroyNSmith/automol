@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+
+## [0.0.7] - 2026-04-08
 - Added inertia moments, kabsch alignment, and center of mass algebraic methods to geom.py
 - Added similarity analysis to geom.py (mirroring first two steps of prism_pruner)
 - Added distance setting to geom.py
