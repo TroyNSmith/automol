@@ -1,9 +1,11 @@
 """Molecular geometries."""
 
 import hashlib
+from collections.abc import Sequence
 
 import numpy as np
-from pydantic import BaseModel, ConfigDict
+import scipy
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from rdkit import Chem
 from rdkit.Chem import Mol, rdDetermineBonds
 
@@ -36,6 +38,8 @@ class Geometry(BaseModel):
     charge: int = 0
     spin: int = 0
 
+    hash: str | None = Field(default=None)
+
     @property
     def masses(self) -> list[float]:
         """Get isotopic masses."""
@@ -45,6 +49,14 @@ class Geometry(BaseModel):
     def atomic_numbers(self) -> list[float]:
         """Get atomic numbers."""
         return list(map(element.number, self.symbols))
+
+    @model_validator(mode="after")
+    def populate_hash(self) -> "Geometry":
+        """Populate hash immediately after the model is created."""
+        # Only populate if hash wasn't explicitly provided
+        if self.hash is None:
+            self.hash = geometry_hash(self, decimals=6)
+        return self
 
 
 # Importers / Exporters
@@ -191,3 +203,211 @@ def center_of_mass(geo: Geometry) -> FloatArray:
     masses = list(map(element.mass, geo.symbols))
     coords = geo.coordinates
     return np.sum(np.reshape(masses, (-1, 1)) * coords, axis=0) / np.sum(masses)
+
+
+def inertia_moments(geo: Geometry) -> FloatArray:
+    """Compute inertia moments of a Geometry."""
+    coords = geo.coordinates - center_of_mass(geo)
+
+    # Compute inertia tensor
+    norms_sq = np.einsum("ni,ni->n", coords, coords)
+    total = np.sum(geo.masses * norms_sq)
+    i_matrix = total * np.eye(3) - np.einsum("n,ni,nj->ij", geo.masses, coords, coords)
+
+    # Principal moments via symmetric eigendecomposition
+    moments, _ = np.linalg.eigh(i_matrix)
+
+    return np.sort(moments)
+
+
+def kabsch(
+    geo1: Geometry, geo2: Geometry, *, heavy_only: bool = False
+) -> tuple[FloatArray, FloatArray, float]:
+    """
+    Compute the optimal rotation / translation to align two Geometries and their RMSD.
+
+    For more information on the numerical method, see https://hunterheidenreich.com/posts/kabsch-algorithm/
+
+    Parameters
+    ----------
+    geo1
+        Geometry object.
+    geo2
+        Geometry object.
+    heavy_only
+        If True, only consider heavy atoms.
+
+    Returns
+    -------
+    FloatArray
+        Optimal rotation of geo2 onto geo1
+    FloatArray
+        Optimal translation of geo2 onto geo1
+    float
+        RMSD
+    """
+    p = np.array(geo1.coordinates)
+    q = np.array(geo2.coordinates)
+    p_masses = geo1.masses
+    q_masses = geo2.masses
+
+    if heavy_only:
+        mask_p = np.array([s != "H" for s in geo1.symbols])
+        mask_q = np.array([s != "H" for s in geo2.symbols])
+        # Contrapositive of "If no heavy atoms exist (e.g., H2, H), skip masking"
+        if np.any(mask_p):
+            p, q = p[mask_p], q[mask_q]
+
+            p_masses = np.asanyarray(p_masses)
+            q_masses = np.asanyarray(q_masses)
+
+            p_masses, q_masses = p_masses[mask_p], q_masses[mask_q]
+
+    if p.shape != q.shape:
+        msg = f"""
+        Input arrays must have same number of dimensions.\n
+        {p.shape = }\n
+        {q.shape = }\n
+        """
+        raise ValueError(msg)
+
+    # --- Optimal translation -------------------
+    centroid_p = center_of_mass(geo1)
+    centroid_q = center_of_mass(geo2)
+    t = centroid_p - centroid_q  # Optimal translation
+    # Center the coordinates
+    p = p - centroid_p
+    q = q - centroid_q
+
+    # --- Optimal rotation ----------------------
+    H = np.dot(p.T, q)  # Covariance matrix  # noqa: N806
+    U, _, Vt = np.linalg.svd(H)  # noqa: N806
+
+    if np.linalg.det(np.dot(Vt.T, U.T)) < 0.0:  # Validate right-handed coordinates
+        Vt[-1, :] *= -1.0
+
+    R = np.dot(Vt.T, U.T)  # Optimal rotation  # noqa: N806
+
+    # --- RMSD ----------------------------------
+    rmsd = np.sqrt(np.sum(np.square(np.dot(p, R.T) - q)) / p.shape[0])
+
+    return R, t, rmsd
+
+
+def is_similar(
+    geo1: Geometry,
+    geo2: Geometry,
+    *,
+    moi_tol: float = 1e-3,
+    rmsd_tol: float = 1e-1,
+) -> bool:
+    """
+    Determine whether two geometries are similar.
+
+    Parameters
+    ----------
+    geo1
+        Geometry object.
+    geo2
+        Geometry object.
+    heavy_only
+        If True, only consider heavy atoms.
+
+    Returns
+    -------
+    bool
+        Whether the two geometries are similar.
+    """
+    # --- Symbols  ---
+    if geo1.symbols.sort() != geo2.symbols.sort():
+        return False
+
+    # --- Geometry Hash ---
+    if geometry_hash(geo1) == geometry_hash(geo2):
+        return True
+
+    # --- Moments of Inertia ---
+    moments_1 = np.sort(inertia_moments(geo1))
+    moments_2 = np.sort(inertia_moments(geo2))
+
+    eps = 1e-6  # Avoid division by zero in linear molecules
+    moi_diff = np.abs(moments_1 - moments_2) / (moments_2 + eps)
+
+    if np.any(moi_diff > moi_tol):
+        return False
+
+    # --- Heavy Atom RMSD ---
+    _, _, rmsd = kabsch(geo1, geo2, heavy_only=True)
+
+    return rmsd < rmsd_tol
+
+
+def distance_matrix(geo: Geometry) -> np.ndarray:
+    """
+    Compute the distance matrix for a geometry.
+
+    Parameters
+    ----------
+    geo
+        Geometry object.
+
+    Returns
+    -------
+    FloatArray
+        Distance matrix of geometry.
+    """
+    return scipy.spatial.distance_matrix(geo.coordinates, geo.coordinates)
+
+
+def set_dist(
+    geo: Geometry,
+    *,
+    idxs: Sequence[int],
+    dist: float,
+    max_dr: float = 0.25,
+    in_place: bool = False,
+) -> Geometry:
+    """
+    Set distance between two atoms.
+
+    Parameters
+    ----------
+    geo
+        Geometry object.
+    idxs
+        Atom indices.
+    dist
+        Value of new distance.
+    max_dr
+        Max allowable change in distance.
+    in_place
+        Modify the geometry in place.
+
+    Returns
+    -------
+    Geometry
+        Updated geometry.
+    """
+    if len(idxs) != 2:  # noqa: PLR2004
+        msg = f"Wrong number of indices provided ({len(idxs)} != 2)."
+        raise ValueError(msg)
+
+    geo = geo if in_place else geo.model_copy(deep=True)
+    i, j = idxs
+
+    # Compute current distance and unit vector
+    vec = geo.coordinates[j] - geo.coordinates[i]
+    r = np.linalg.norm(vec)
+    unit_vec = vec / r
+
+    # Ensure that change does not exceed max allowable
+    # NOTE: Can be replaced by structure smoothing / verification
+    dr = abs(r - dist)
+    if dr > max_dr:
+        msg = f"{dr = } exceeds {max_dr = }."
+        raise ValueError(msg)
+
+    # Atom j coordinates relevant to atom i
+    geo.coordinates[j] = geo.coordinates[i] + (unit_vec * dist)
+
+    return geo

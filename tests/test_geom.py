@@ -15,6 +15,15 @@ def water() -> Geometry:
     )
 
 
+@pytest.fixture
+def water_inv() -> Geometry:
+    """Inverted Water geometry fixture."""
+    return Geometry(
+        symbols=["O", "H", "H"],
+        coordinates=[[1, 0, 0], [0, 0, 0], [0, 1, 0]],  # ty:ignore[invalid-argument-type]
+    )
+
+
 def test__hash(water: Geometry) -> None:
     """Test geometry hashing."""
     water2 = Geometry(
@@ -32,3 +41,9 @@ def test__center_of_mass(water: Geometry) -> None:
 def test__inchi(water: Geometry) -> None:
     """Test InChI generation."""
     assert geom.inchi(water) == "InChI=1S/H2O/h1H2"
+
+
+def test__is_similar(water: Geometry, water_inv: Geometry) -> None:
+    """Test similarity analysis."""
+    assert geom.is_similar(water, water)
+    assert geom.is_similar(water, water_inv)
