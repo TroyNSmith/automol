@@ -150,7 +150,7 @@ def from_xyz_block(xyz_str: str) -> Geometry:
     symbs, coords = zip(
         *[XYZ_LINE.parse_string(line).as_list() for line in lines], strict=True
     )
-    return Geometry(symbols=symbs, coordinates=np.array(coords))
+    return Geometry(symbols=list(symbs), coordinates=np.array(coords))
 
 
 def rdkit_mol(geo: Geometry) -> Mol:
