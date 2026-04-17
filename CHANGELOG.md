@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 - Added view submodule for building view objects
 - Added geometry functions (translation, rotation, reflection, dihedral angles, etc.)
+- Added graph submodule with conversion to/from RDKit Mol and SMILES/InChI
 
 ## [0.0.7] - 2026-04-08
 - Added inertia moments, kabsch alignment, and center of mass algebraic methods to geom.py

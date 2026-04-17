@@ -1,5 +1,7 @@
 """RDKit molecule."""
 
+from collections.abc import Mapping
+
 import numpy as np
 from rdkit import Chem
 from rdkit.Chem import Descriptors, Mol, rdDetermineBonds
@@ -27,6 +29,30 @@ def from_smiles(smi: str, *, with_coords: bool = False) -> Mol:
         RDKit molecule.
     """
     mol = Chem.MolFromSmiles(smi)
+    mol = Chem.AddHs(mol)
+    if with_coords:
+        add_coordinates(mol, in_place=True)
+    return mol
+
+
+def from_inchi(inchi: str, *, with_coords: bool = False) -> Mol:
+    """
+    Get RDKit molecule from InChI string.
+
+    Parameters
+    ----------
+    inchi
+        InChI string.
+
+    with_coords, optional
+        If `True`, generate 3D coordinates for the molecule.
+        If `False` (default), return a molecule without coordinates.
+
+    Returns
+    -------
+        RDKit molecule.
+    """
+    mol = Chem.MolFromInchi(inchi, sanitize=False, removeHs=False)
     mol = Chem.AddHs(mol)
     if with_coords:
         add_coordinates(mol, in_place=True)
@@ -185,4 +211,32 @@ def add_coordinates(mol: Mol, *, in_place: bool = False) -> Mol:
 
     mol = mol if in_place else Mol(mol)
     EmbedMolecule(mol)
+    return mol
+
+
+def add_atom_numbers(
+    mol: Mol, to_number: Mapping[int, int], *, in_place: bool = False
+) -> Mol:
+    """Add atom numbers.
+
+    Parameters
+    ----------
+    mol
+        RDKit molecule object.
+    to_number
+        Mapping from atom index to atom number.
+    in_place, optional
+        If `True`, modify the molecule in place.
+        If `False` (default), return a new molecule.
+
+    Returns
+    -------
+        RDKit molecule object with "atomLabel" property set to f"{symbol}{number}"
+    """
+    mol = mol if in_place else Mol(mol)
+    for atom in mol.GetAtoms():
+        number = to_number[atom.GetIdx()]
+        symbol = atom.GetSymbol()
+        atom.SetProp("atomLabel", f"{symbol}{number}")
+
     return mol
