@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+
+## [0.0.8] - 2026-04-16
 - Added view submodule for building view objects
 - Added geometry functions (translation, rotation, reflection, dihedral angles, etc.)
 - Added graph submodule with conversion to/from RDKit Mol and SMILES/InChI
