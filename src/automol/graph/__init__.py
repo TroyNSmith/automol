@@ -1,5 +1,6 @@
 """Molecular graphs."""
 
+from . import ts
 from .core import (
     Atom,
     Bond,
@@ -16,6 +17,7 @@ from .core import (
 )
 
 __all__ = [
+    "ts",
     "Atom",
     "Bond",
     "Graph",
