@@ -11,6 +11,7 @@ from automol.graph import ts
     [
         ("CCO", "[CH2]O.[CH3]", 1),
         ("CC.[OH]", "C[CH2].O", 1),
+        ("CC.[CH3]", "C[CH2].C", 1),
         ("CCO[O]", "[CH2]COO", 1),
         ("CCO[O]", "C=C.O[O]", 2),
     ],

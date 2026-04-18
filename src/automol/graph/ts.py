@@ -151,40 +151,56 @@ def all_from_reactants_and_products_with_mappings(
     diff_counter = copy.deepcopy(counter2)
     diff_counter.subtract(counter1)
 
-    form_counts = {k: v for k, v in diff_counter.items() if v > 0}
-    break_counts = {k: abs(v) for k, v in diff_counter.items() if v < 0}
+    all_bond_types = sorted(diff_counter.keys(), key=lambda x: (-x.count("H"), x))
+
+    break_counts1 = {k: -v for k, v in diff_counter.items() if v < 0}
+    break_counts2 = {k: v for k, v in diff_counter.items() if v > 0}
 
     gras = []
     mappings = []
     bnd_changes_lst = []
-    for break_bonds1 in _iterate_bond_sets(rct_gra, break_counts):
-        for break_bonds2 in _iterate_bond_sets(prd_gra, form_counts):
-            gra1 = remove_bonds(rct_gra, break_bonds1)
-            gra2 = remove_bonds(prd_gra, break_bonds2)
 
-            bcms = _iterate_reverse_isomorphisms_with_distinct_bond_changes(
-                gra1, gra2, break_bonds1, break_bonds2, bnd_changes_lst=bnd_changes_lst
+    for extra_count in range(2):
+        iter1 = itertools.combinations(all_bond_types, extra_count)
+        for extra_types in iter1:
+            iter2 = _iterate_break_bond_sets(
+                rct_gra, prd_gra, break_counts1, break_counts2, extra_types=extra_types
             )
-            for bnd_changes, mapping in bcms:
-                gra = from_bond_changes(rct_gra, bnd_changes)
-                rct_gra_ = reactants_graph(gra)
-                prd_gra_ = products_graph(gra)
+            for break_bonds1, break_bonds2 in iter2:
+                gra1 = remove_bonds(rct_gra, break_bonds1)
+                gra2 = remove_bonds(prd_gra, break_bonds2)
 
-                # Continue if reactant does not match
-                if not is_isomorphic(rct_gra, rct_gra_):
-                    continue
+                iter3 = _iterate_reverse_isomorphisms_with_distinct_bond_changes(
+                    gra1,
+                    gra2,
+                    break_bonds1,
+                    break_bonds2,
+                    bnd_changes_lst=bnd_changes_lst,
+                )
+                for bnd_changes, mapping in iter3:
+                    gra = from_bond_changes(rct_gra, bnd_changes)
+                    rct_gra_ = reactants_graph(gra)
+                    prd_gra_ = products_graph(gra)
 
-                # Continue if product does not match
-                if not is_isomorphic(prd_gra, prd_gra_):
-                    continue
+                    # Continue if reactant does not match
+                    if not is_isomorphic(rct_gra, rct_gra_):
+                        continue
 
-                # Continue if not unique
-                if any(is_isomorphic(gra, g) for g in gras):
-                    continue
+                    # Continue if product does not match
+                    if not is_isomorphic(prd_gra, prd_gra_):
+                        continue
 
-                gras.append(gra)
-                mappings.append(mapping)
-                bnd_changes_lst.append(bnd_changes)
+                    # Continue if not unique
+                    if any(is_isomorphic(gra, g) for g in gras):
+                        continue
+
+                    gras.append(gra)
+                    mappings.append(mapping)
+                    bnd_changes_lst.append(bnd_changes)
+
+        # If we found somthing, break
+        if gras:
+            break
 
     return gras, mappings
 
@@ -206,6 +222,28 @@ def _bonds_by_type(G: Graph) -> dict[BondType, set[BondKey]]:  # noqa: N803
     for bond_key, bond_type in bond_types.items():
         bonds_by_type[bond_type].add(bond_key)
     return dict(bonds_by_type)
+
+
+def _iterate_break_bond_sets(
+    gra1: Graph[Atom, Bond],
+    gra2: Graph[Atom, Bond],
+    break_counts1: dict[BondType, int],
+    break_counts2: dict[BondType, int],
+    extra_types: Sequence[BondType] = (),
+) -> Iterator[tuple[tuple[BondKey, ...], tuple[BondKey, ...]]]:
+    """Fewest-bonds-first constructive count vector mappings.
+
+    Note: The mappings are from products to reactants!
+    """
+    break_counts1 = defaultdict(int, break_counts1)
+    break_counts2 = defaultdict(int, break_counts2)
+    for bond_type in extra_types:
+        break_counts1[bond_type] += 1
+        break_counts2[bond_type] += 1
+
+    for break_bonds1 in _iterate_bond_sets(gra1, break_counts1):
+        for break_bonds2 in _iterate_bond_sets(gra2, break_counts2):
+            yield break_bonds1, break_bonds2
 
 
 def _iterate_bond_sets(
