@@ -8,7 +8,7 @@ Does not include bond order information.
 import copy
 import itertools
 from collections import Counter, defaultdict
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from enum import StrEnum
 from typing import Any
 
@@ -156,20 +156,17 @@ def all_from_reactants_and_products_with_mappings(
 
     gras = []
     mappings = []
+    bnd_changes_lst = []
     for break_bonds1 in _iterate_bond_sets(rct_gra, break_counts):
         for break_bonds2 in _iterate_bond_sets(prd_gra, form_counts):
             gra1 = remove_bonds(rct_gra, break_bonds1)
             gra2 = remove_bonds(prd_gra, break_bonds2)
 
-            mappings = isomorphisms(gra2, gra1)
-            for mapping in mappings:
-                break_bonds = break_bonds1
-                form_bonds = {tuple(sorted(map(mapping.get, b))) for b in break_bonds2}
-                bond_changes = {
-                    **dict.fromkeys(break_bonds, Change.BROKEN),
-                    **dict.fromkeys(form_bonds, Change.FORMED),
-                }
-                gra = from_bond_changes(rct_gra, bond_changes)
+            bcms = _iterate_reverse_isomorphisms_with_distinct_bond_changes(
+                gra1, gra2, break_bonds1, break_bonds2, bnd_changes_lst=bnd_changes_lst
+            )
+            for bnd_changes, mapping in bcms:
+                gra = from_bond_changes(rct_gra, bnd_changes)
                 rct_gra_ = reactants_graph(gra)
                 prd_gra_ = products_graph(gra)
 
@@ -187,6 +184,7 @@ def all_from_reactants_and_products_with_mappings(
 
                 gras.append(gra)
                 mappings.append(mapping)
+                bnd_changes_lst.append(bnd_changes)
 
     return gras, mappings
 
@@ -223,3 +221,25 @@ def _iterate_bond_sets(
 
     for combos in itertools.product(*combo_iters):
         yield tuple(itertools.chain.from_iterable(combos))
+
+
+def _iterate_reverse_isomorphisms_with_distinct_bond_changes(
+    gra1: Graph[Atom, Bond],
+    gra2: Graph[Atom, Bond],
+    break_bonds1: Sequence[BondKey],
+    break_bonds2: Sequence[BondKey],
+    bnd_changes_lst: list[dict[BondKey, Change]],
+) -> Iterator[tuple[dict[BondKey, Change], dict[int, int]]]:
+    """Iterate over reverse_isomorphisms with distinct bond changes."""
+    bnd_changes_lst = copy.copy(bnd_changes_lst)
+    mappings = isomorphisms(gra2, gra1)
+    for mapping in mappings:
+        break_bonds = break_bonds1
+        form_bonds = {tuple(sorted(map(mapping.get, b))) for b in break_bonds2}
+        bnd_changes = {
+            **dict.fromkeys(break_bonds, Change.BROKEN),
+            **dict.fromkeys(form_bonds, Change.FORMED),
+        }
+        if bnd_changes not in bnd_changes_lst:
+            bnd_changes_lst.append(bnd_changes)
+            yield bnd_changes, mapping
