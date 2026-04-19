@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+- Overhaul graph API with better design and better typing as Graph[Atom, Bond]
+- Implement graph.ts submodule with brute-force reaction mapping algorithm
 
 ## [0.0.8] - 2026-04-16
 - Added view submodule for building view objects
