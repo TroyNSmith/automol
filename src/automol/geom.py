@@ -667,12 +667,12 @@ def to_eckart_frame(geo: Geometry, *, in_place: bool = False) -> Geometry:
     return rotate(geo, rot, in_place=True)
 
 
-def set_dist(
+def set_distance(
     geo: Geometry,
     *,
     idxs: Sequence[int],
-    dist: float,
-    max_dr: float = 0.25,
+    val: float,
+    max_change: float = 0.25,
     in_place: bool = False,
 ) -> Geometry:
     """
@@ -684,9 +684,9 @@ def set_dist(
         Geometry object.
     idxs
         Atom indices.
-    dist
+    val
         Value of new distance.
-    max_dr
+    max_change
         Max allowable change in distance.
     in_place
         Modify the geometry in place.
@@ -710,13 +710,13 @@ def set_dist(
 
     # Ensure that change does not exceed max allowable
     # NOTE: Can be replaced by structure smoothing / verification
-    dr = abs(r - dist)
-    if dr > max_dr:
-        msg = f"{dr = } exceeds {max_dr = }."
+    dr = abs(r - val)
+    if dr > max_change:
+        msg = f"{dr = } exceeds {max_change = }."
         raise ValueError(msg)
 
     # Atom j coordinates relevant to atom i
-    geo.coordinates[j] = geo.coordinates[i] + (unit_vec * dist)
+    geo.coordinates[j] = geo.coordinates[i] + (unit_vec * val)
 
     return geo
 
