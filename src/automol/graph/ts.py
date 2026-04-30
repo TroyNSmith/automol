@@ -67,7 +67,7 @@ def is_isomorphic[AtomT: Atom, BondT: Bond](
 
 # Transition state graphs
 BondKey = tuple[int, int]
-BondType = tuple[str, str]
+BondSymbol = tuple[str, str]
 FORMED_BOND = TransBond(change=Change.FORMED)
 BROKEN_BOND = TransBond(change=Change.BROKEN)
 
@@ -144,14 +144,14 @@ def all_from_reactants_and_products_with_mappings(
 
     Note: The mappings are from products to reactants!
     """
-    bond_types1 = _bond_types(rct_gra)
-    bond_types2 = _bond_types(prd_gra)
-    counter1 = Counter(bond_types1.values())
-    counter2 = Counter(bond_types2.values())
+    bond_symbs1 = _bond_symbols(rct_gra)
+    bond_symbs2 = _bond_symbols(prd_gra)
+    counter1 = Counter(bond_symbs1.values())
+    counter2 = Counter(bond_symbs2.values())
     diff_counter = copy.deepcopy(counter2)
     diff_counter.subtract(counter1)
 
-    all_bond_types = sorted(diff_counter.keys(), key=lambda x: (-x.count("H"), x))
+    all_bond_symbs = sorted(diff_counter.keys(), key=lambda x: (-x.count("H"), x))
 
     break_counts1 = {k: -v for k, v in diff_counter.items() if v < 0}
     break_counts2 = {k: v for k, v in diff_counter.items() if v > 0}
@@ -161,10 +161,10 @@ def all_from_reactants_and_products_with_mappings(
     bnd_changes_lst = []
 
     for extra_count in range(2):
-        iter1 = itertools.combinations(all_bond_types, extra_count)
-        for extra_types in iter1:
+        iter1 = itertools.combinations(all_bond_symbs, extra_count)
+        for extra_symbs in iter1:
             iter2 = _iterate_break_bond_sets(
-                rct_gra, prd_gra, break_counts1, break_counts2, extra_types=extra_types
+                rct_gra, prd_gra, break_counts1, break_counts2, extra_symbs=extra_symbs
             )
             for break_bonds1, break_bonds2 in iter2:
                 gra1 = remove_bonds(rct_gra, break_bonds1)
@@ -205,8 +205,8 @@ def all_from_reactants_and_products_with_mappings(
     return gras, mappings
 
 
-def _bond_types(G: Graph) -> dict[BondKey, BondType]:  # noqa: N803
-    """Extract the bond types from a transition graph."""
+def _bond_symbols(G: Graph) -> dict[BondKey, BondSymbol]:  # noqa: N803
+    """Extract the bond symbols from a transition graph."""
     return {
         (key1, key2): tuple(
             sorted([G.nodes[key1][Atom.symbol], G.nodes[key2][Atom.symbol]])
@@ -215,21 +215,21 @@ def _bond_types(G: Graph) -> dict[BondKey, BondType]:  # noqa: N803
     }
 
 
-def _bonds_by_type(G: Graph) -> dict[BondType, set[BondKey]]:  # noqa: N803
-    """Group bonds by their types."""
-    bond_types = _bond_types(G)
-    bonds_by_type = defaultdict(set)
-    for bond_key, bond_type in bond_types.items():
-        bonds_by_type[bond_type].add(bond_key)
-    return dict(bonds_by_type)
+def _bonds_by_symbol(G: Graph) -> dict[BondSymbol, set[BondKey]]:  # noqa: N803
+    """Group bonds by their symbols."""
+    bond_symbs = _bond_symbols(G)
+    bonds_by_symb = defaultdict(set)
+    for bond_key, bond_symb in bond_symbs.items():
+        bonds_by_symb[bond_symb].add(bond_key)
+    return dict(bonds_by_symb)
 
 
 def _iterate_break_bond_sets(
     gra1: Graph[Atom, Bond],
     gra2: Graph[Atom, Bond],
-    break_counts1: dict[BondType, int],
-    break_counts2: dict[BondType, int],
-    extra_types: Sequence[BondType] = (),
+    break_counts1: dict[BondSymbol, int],
+    break_counts2: dict[BondSymbol, int],
+    extra_symbs: Sequence[BondSymbol] = (),
 ) -> Iterator[tuple[tuple[BondKey, ...], tuple[BondKey, ...]]]:
     """Fewest-bonds-first constructive count vector mappings.
 
@@ -237,9 +237,9 @@ def _iterate_break_bond_sets(
     """
     break_counts1 = defaultdict(int, break_counts1)
     break_counts2 = defaultdict(int, break_counts2)
-    for bond_type in extra_types:
-        break_counts1[bond_type] += 1
-        break_counts2[bond_type] += 1
+    for bond_symb in extra_symbs:
+        break_counts1[bond_symb] += 1
+        break_counts2[bond_symb] += 1
 
     for break_bonds1 in _iterate_bond_sets(gra1, break_counts1):
         for break_bonds2 in _iterate_bond_sets(gra2, break_counts2):
@@ -248,13 +248,13 @@ def _iterate_break_bond_sets(
 
 def _iterate_bond_sets(
     G: Graph,  # noqa: N803
-    counts: dict[BondType, int],
+    counts: dict[BondSymbol, int],
 ) -> Iterator[tuple[BondKey, ...]]:
     """Iterate over all combinations of bonds to form or break."""
-    bonds_by_type = _bonds_by_type(G)
+    bonds_by_symb = _bonds_by_symbol(G)
     combo_iters = [
-        itertools.combinations(bonds_by_type[bond_type], count)
-        for bond_type, count in counts.items()
+        itertools.combinations(bonds_by_symb[symb], count)
+        for symb, count in counts.items()
     ]
 
     for combos in itertools.product(*combo_iters):
