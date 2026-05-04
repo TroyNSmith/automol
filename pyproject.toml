@@ -9,6 +9,7 @@ dependencies = [
     "pint>=0.24",
     "py3dmol>=2.5",
     "pydantic>=2.5",
+    "pyparsing>=3.3.2",
     "rdkit>=2025",
     "scipy>=1.13",
 ]
