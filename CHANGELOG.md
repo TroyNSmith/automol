@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+
+## [0.0.11] - 2026-05-04
 - Added missing pyparsing dependency
 
 ## [0.0.10] - 2026-04-30
