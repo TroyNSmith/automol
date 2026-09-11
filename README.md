@@ -41,12 +41,12 @@ com = geom.center_of_mass(water)
 ### Identity generation (InChI, SMILES)
 
 ```python
-from automol import Algorithm, Identity
+from automol import RDKIT_INCHI, RDKIT_SMILES, Identity
 
-inchi = Identity.from_geometry(water, algorithm=Algorithm.RDKIT_INCHI)
+inchi = Identity.from_geometry(water, algorithm=RDKIT_INCHI)
 print(inchi.value)  # "InChI=1S/H2O/h1H2"
 
-smiles = Identity.from_geometry(water, algorithm=Algorithm.RDKIT_SMILES)
+smiles = Identity.from_geometry(water, algorithm=RDKIT_SMILES)
 print(smiles.value)  # "O"
 ```
 

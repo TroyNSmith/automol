@@ -4,12 +4,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Added
+- `IdentityKind` `StrEnum` for categorizing identity types (`FORMULA`, `STEREOISOMER`, `CONFORMER`, `ISOMER`).
+- `AlgorithmDef`, `AlgorithmFns`, `AlgorithmRegistry` exported from top-level `automol` namespace.
+- `other_geos` parameter type (`dict[str, Geometry] | None`) in `AlgorithmFns.identity_fn` to support named reference geometries for conformer identity generation.
+
+### Changed
+- `Algorithm` `StrEnum` removed; algorithms are now plain string identifiers, so higher-level packages can register their own via `AlgorithmRegistry.register(algorithm, kind)` without modifying `automol.ident`. Built-in algorithms are exposed as module-level constants (`RDKIT_INCHI`, `RDKIT_SMILES`, `HILL_FORMULA`) instead of enum members.
+
 
 ## [0.0.23] - 2026-09-01
 ### Removed
 - `geom.is_duplicate_conformer()` and `irmsd` dependency. (Broken `numpy` reference in solved `irmsd` version).
 - `Algorithm.IRMSD` conformer-group identity algorithm.
-
 
 ### Fixed
 - Dependencies listed in `pixi.toml` instead of `pyproject.toml`
