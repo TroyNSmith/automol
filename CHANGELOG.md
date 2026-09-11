@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+
+## [0.0.24] - 2026-09-11
 ### Added
 - `IdentityKind` `StrEnum` for categorizing identity types (`FORMULA`, `STEREOISOMER`, `CONFORMER`, `ISOMER`).
 - `AlgorithmDef`, `AlgorithmFns`, `AlgorithmRegistry` exported from top-level `automol` namespace.
