@@ -4,19 +4,16 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections import Counter
-from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, ClassVar, Self
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel
 from rdkit import Chem
 
 from . import geom
 from .utils.exc import AlgorithmAlreadyRegisteredError, UnknownAlgorithmError
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from .geom import Geometry
 
 
@@ -37,43 +34,22 @@ RDKIT_SMILES = "rdkit smiles"
 HILL_FORMULA = "hill formula"
 
 
-@dataclass
-class AlgorithmDef:
-    """
-    Descriptor for a single identity-generating algorithm.
-
-    Attributes
-    ----------
-    algorithm
-        Registered algorithm that produced this identity.
-    kind
-        Category of identity this algorithm produces (e.g., "stereoisomer").
-    identity_fn
-        Callable function to generate string identifier from geometry.
-    geometry_fn
-        Callable function to generate geometry from string identifier.
-        `None` if the algorithm has no defined inverse.
-    """
-
-    algorithm: str
-    kind: str
-
-    identity_fn: Callable[[Geometry, dict[str, Geometry] | None], str]
-    geometry_fn: Callable[[str], Geometry] | None = None
-
-
-class AlgorithmFns(ABC):
+class Algorithm(ABC):
     """Boilerplate for Algorithm functions class."""
 
-    @staticmethod
+    name: ClassVar[str]
+    kind: ClassVar[IdentityKind]
+    parent_algorithm: ClassVar[type[Algorithm] | None] = None
+
+    @classmethod
     @abstractmethod
     def identity_fn(
-        geo: Geometry, other_geos: dict[str, Geometry] | None = None
+        cls, geo: Geometry, other_geos: dict[str, Geometry] | None = None
     ) -> str:
         """Generate an identifier string from a Geometry."""
 
-    @staticmethod
-    def geometry_fn(value: str) -> Geometry:
+    @classmethod
+    def geometry_fn(cls, value: str) -> Geometry:
         """Instantiate a Geometry from an identifier string."""
         msg = f"Conversion of {value} to Geometry not implemented."
         raise NotImplementedError(msg)
@@ -82,55 +58,36 @@ class AlgorithmFns(ABC):
 class AlgorithmRegistry:
     """Central registry of all known identity algorithms."""
 
-    _algorithms: ClassVar[dict[str, AlgorithmDef]] = {}
+    _algorithms: ClassVar[list[type[Algorithm]]] = []
 
     @classmethod
-    def register(
-        cls, algorithm: str, kind: str
-    ) -> Callable[[type[AlgorithmFns]], type[AlgorithmFns]]:
+    def register[T: type[Algorithm]](cls, cls_: T) -> T:
         """Register identity_fn and geometry_fn as an AlgorithmDef."""
-
-        def decorator(cls_: type[AlgorithmFns]) -> type[AlgorithmFns]:
-            if algorithm in cls._algorithms:
-                msg = f"Algorithm {algorithm!r} is already registered."
-                raise AlgorithmAlreadyRegisteredError(msg)
-            cls._algorithms[algorithm] = AlgorithmDef(
-                algorithm=algorithm,
-                kind=kind,
-                identity_fn=staticmethod(cls_.identity_fn),
-                geometry_fn=staticmethod(cls_.geometry_fn),
-            )
-            return cls_
-
-        return decorator
-
-    @classmethod
-    def register_def(cls, alg: AlgorithmDef) -> None:
-        """Directly register an AlgorithmDef instance."""
-        if alg.algorithm in cls._algorithms:
-            msg = f"Algorithm {alg.algorithm!r} is already registered."
+        if any(a.name == cls_.name for a in cls._algorithms):
+            msg = f"Algorithm {cls_.name!r} is already registered."
             raise AlgorithmAlreadyRegisteredError(msg)
-        cls._algorithms[alg.algorithm] = alg
+        cls._algorithms.append(cls_)
+        return cls_
 
     @classmethod
-    def get(cls, algorithm: str) -> AlgorithmDef:
+    def get(cls, name: str) -> type[Algorithm]:
         """Get an algorithm from registry."""
         try:
-            return cls._algorithms[algorithm]
-        except KeyError:
-            available = ", ".join(sorted(cls._algorithms))
-            msg = f"Unknown algorithm {algorithm!r}. Available: {available}"
+            return next(a for a in cls._algorithms if a.name == name)
+        except StopIteration:
+            available = ", ".join(sorted(a.name for a in cls._algorithms))
+            msg = f"Unknown algorithm {name!r}. Available: {available}"
             raise UnknownAlgorithmError(msg) from None
 
     @classmethod
     def all_algorithms(cls) -> list[str]:
         """Return all registered algorithms."""
-        return sorted(cls._algorithms)
+        return sorted(a.name for a in cls._algorithms)
 
     @classmethod
     def algorithms_for_kind(cls, kind: str) -> list[str]:
         """Return all registered algorithms for a kind."""
-        return sorted(a for a, d in cls._algorithms.items() if d.kind == kind)
+        return sorted(a.name for a in cls._algorithms if a.kind == kind)
 
 
 class Identity(BaseModel):
@@ -149,102 +106,96 @@ class Identity(BaseModel):
         `from_value` over setting this directly.
     """
 
-    algorithm: str
+    algorithm: type[Algorithm]
     value: str
-    kind: str
-
-    @model_validator(mode="after")
-    def _validate_algorithm_kind(self) -> Identity:
-        expected_kind = AlgorithmRegistry.get(self.algorithm).kind
-        if self.kind != expected_kind:
-            msg = (
-                f"Algorithm {self.algorithm!r} belongs to kind "
-                f"{expected_kind!r}, not {self.kind!r}."
-            )
-            # Pydantic only wraps ValueError/TypeError/AssertionError from
-            # model validators into a ValidationError; anything else bypasses
-            # that pipeline entirely, so this must stay a plain ValueError.
-            raise ValueError(msg)
-        return self
 
     @classmethod
     def from_geometry(
         cls,
         geo: Geometry,
         *,
-        algorithm: str,
+        algorithm: type[Algorithm],
         other_geos: dict[str, Geometry] | None = None,
     ) -> Self:
         """Return an Identity from a Geometry, by algorithm alone."""
-        alg = AlgorithmRegistry.get(algorithm)
-        value = alg.identity_fn(geo, other_geos)
-        return cls.from_value(value, algorithm=algorithm)
-
-    @classmethod
-    def from_value(cls, value: str, *, algorithm: str) -> Self:
-        """Return an Identity from an already-computed value, by algorithm alone."""
-        kind = AlgorithmRegistry.get(algorithm).kind
-        return cls(algorithm=algorithm, value=value, kind=kind)
+        value = algorithm.identity_fn(geo, other_geos)
+        return cls(algorithm=algorithm, value=value)
 
     def geometry(self) -> Geometry:
         """Return a Geometry from Identity instance."""
-        alg = AlgorithmRegistry.get(self.algorithm)
-        if alg.geometry_fn:
-            return alg.geometry_fn(self.value)
-        raise NotImplementedError
+        return self.algorithm.geometry_fn(self.value)
 
 
-@AlgorithmRegistry.register(RDKIT_INCHI, IdentityKind.STEREOISOMER)
-class RDKitInChI(AlgorithmFns):
+@AlgorithmRegistry.register
+class RDKitInChI(Algorithm):
     """Identify geometry with InChI using RDKit."""
 
-    @staticmethod
+    name: ClassVar[str] = "RDKitInChI"
+    kind: ClassVar[IdentityKind] = IdentityKind.STEREOISOMER
+
+    @classmethod
     def identity_fn(
+        cls,
         geo: Geometry,
-        other_geos: dict[str, Geometry] | None = None,  # noqa: ARG004
+        other_geos: dict[str, Geometry] | None = None,  # noqa: ARG003
     ) -> str:
         """Generate InChI from Geometry with RDKit."""
         mol = geom.rdkit_mol(geo)
         mol_block = Chem.rdmolfiles.MolToMolBlock(mol)
         return Chem.inchi.MolBlockToInchi(mol_block)
 
-    @staticmethod
-    def geometry_fn(value: str) -> Geometry:
+    @classmethod
+    def geometry_fn(cls, value: str) -> Geometry:
         """Generate Geometry from InChI with RDKit."""
         mol = Chem.MolFromInchi(value, sanitize=True, removeHs=False)
         mol = Chem.AddHs(mol)
         return geom.from_rdkit_mol(mol)
 
 
-@AlgorithmRegistry.register(RDKIT_SMILES, IdentityKind.STEREOISOMER)
-class RDKitSMILES(AlgorithmFns):
-    """Identify or generate geometry with SMILES using RDKit."""
+@AlgorithmRegistry.register
+class RDKitSMILES(Algorithm):
+    """Identify geometry with SMILES using RDKit."""
 
-    @staticmethod
+    name: ClassVar[str] = "RDKitSMILES"
+    kind: ClassVar[IdentityKind] = IdentityKind.STEREOISOMER
+    parent_algorithm: ClassVar[type[Algorithm]] = RDKitInChI
+
+    @classmethod
     def identity_fn(
-        geo: Geometry,
-        other_geos: dict[str, Geometry] | None = None,  # noqa: ARG004
+        cls, geo: Geometry, other_geos: dict[str, Geometry] | None = None
     ) -> str:
         """Generate SMILES from Geometry with RDKit."""
-        mol = geom.rdkit_mol(geo)
-        return Chem.MolToSmiles(Chem.RemoveAllHs(mol))
+        inchi = cls.parent_algorithm.identity_fn(geo)
+        if other_geos:
+            smiles = next(
+                s
+                for s, g in other_geos.items()
+                if cls.parent_algorithm.identity_fn(g) == inchi
+            )
+            if smiles:
+                return smiles
+        return Chem.MolToSmiles(Chem.RemoveAllHs(geom.rdkit_mol(geo)))
 
-    @staticmethod
-    def geometry_fn(value: str) -> Geometry:
+    @classmethod
+    def geometry_fn(cls, value: str) -> Geometry:
         """Generate Geometry from SMILES with RDKit."""
         mol = Chem.MolFromSmiles(value)
         mol = Chem.AddHs(mol)
         return geom.from_rdkit_mol(mol)
 
 
-@AlgorithmRegistry.register(HILL_FORMULA, IdentityKind.FORMULA)
-class HillFormula(AlgorithmFns):
+@AlgorithmRegistry.register
+class HillFormula(Algorithm):
     """Identify geometry with its molecular formula in Hill order."""
 
-    @staticmethod
+    name: ClassVar[str] = "HillFormula"
+    kind: ClassVar[IdentityKind] = IdentityKind.FORMULA
+
+    @classmethod
     def identity_fn(
+        cls,
         geo: Geometry,
-        other_geos: dict[str, Geometry] | None = None,  # noqa: ARG004
+        other_geos: dict[str, Geometry] | None = None,  # noqa: ARG003
     ) -> str:
         """Render the molecular formula in Hill order."""
         counts = Counter(s.capitalize() for s in geo.symbols)
