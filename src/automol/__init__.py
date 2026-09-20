@@ -7,23 +7,21 @@ from .geom import Geometry, View
 from .ident import (
     Algorithm,
     AlgorithmRegistry,
-    HillFormula,
-    Identity,
     IdentityKind,
-    RDKitInChI,
-    RDKitSMILES,
+    hill_formula,
+    rdkit_inchi,
+    rdkit_smiles,
 )
 
 __all__ = [
     "Algorithm",
     "AlgorithmRegistry",
     "Geometry",
-    "HillFormula",
-    "Identity",
     "IdentityKind",
-    "RDKitInChI",
-    "RDKitSMILES",
     "View",
     "geom",
+    "hill_formula",
     "rd",
+    "rdkit_inchi",
+    "rdkit_smiles",
 ]
