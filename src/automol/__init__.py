@@ -5,27 +5,23 @@ __version__ = "0.0.24"
 from . import geom, rd
 from .geom import Geometry, View
 from .ident import (
-    HILL_FORMULA,
-    RDKIT_INCHI,
-    RDKIT_SMILES,
-    AlgorithmDef,
-    AlgorithmFns,
+    Algorithm,
     AlgorithmRegistry,
-    Identity,
     IdentityKind,
+    hill_formula,
+    rdkit_inchi,
+    rdkit_smiles,
 )
 
 __all__ = [
-    "HILL_FORMULA",
-    "RDKIT_INCHI",
-    "RDKIT_SMILES",
-    "AlgorithmDef",
-    "AlgorithmFns",
+    "Algorithm",
     "AlgorithmRegistry",
     "Geometry",
-    "Identity",
     "IdentityKind",
     "View",
     "geom",
+    "hill_formula",
     "rd",
+    "rdkit_inchi",
+    "rdkit_smiles",
 ]

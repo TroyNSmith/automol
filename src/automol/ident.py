@@ -2,22 +2,43 @@
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
 from collections import Counter
-from dataclasses import dataclass
+from collections.abc import Mapping
 from enum import StrEnum
-from typing import TYPE_CHECKING, ClassVar, Self
+from typing import TYPE_CHECKING, ClassVar, Protocol, runtime_checkable
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, ConfigDict
 from rdkit import Chem
 
 from . import geom
 from .utils.exc import AlgorithmAlreadyRegisteredError, UnknownAlgorithmError
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from .geom import Geometry
+
+# `Mapping` (rather than `dict`) is covariant in its value type, so a mapping
+# of `Geometry` subclasses (e.g. `dict[str, SubGeometry]`) is accepted too.
+OTHER_GEOS = Mapping[str, "Geometry"] | None
+
+
+@runtime_checkable
+class IdentityProtocol(Protocol):
+    """Protocol for identity functions."""
+
+    def __call__(self, geo: Geometry, other_geos: OTHER_GEOS = None) -> str:
+        """Identity function not implemented."""
+        msg = "Identity function not implemented."
+        raise NotImplementedError(msg)
+
+
+@runtime_checkable
+class GeometryProtocol(Protocol):
+    """Protocol for geometry functions."""
+
+    def __call__(self, value: str) -> Geometry:
+        """Geometry function not implemented."""
+        msg = "Geometry function not implemented."
+        raise NotImplementedError(msg)
 
 
 class IdentityKind(StrEnum):
@@ -29,231 +50,157 @@ class IdentityKind(StrEnum):
     ISOMER = "isomer"
 
 
-# Identifiers for the built-in algorithms. Higher-level packages are free to
-# register additional algorithms under their own string identifiers; these
-# are just the ones shipped with this package.
-RDKIT_INCHI = "rdkit inchi"
-RDKIT_SMILES = "rdkit smiles"
-HILL_FORMULA = "hill formula"
+def default_geometry_fn(value: str) -> Geometry:
+    """Default geometry function that raises an error."""
+    msg = "Geometry function not implemented."
+    raise NotImplementedError(msg)
 
 
-@dataclass
-class AlgorithmDef:
-    """
-    Descriptor for a single identity-generating algorithm.
+class Algorithm(BaseModel):
+    """Boilerplate for Algorithm instances."""
 
-    Attributes
-    ----------
-    algorithm
-        Registered algorithm that produced this identity.
-    kind
-        Category of identity this algorithm produces (e.g., "stereoisomer").
-    identity_fn
-        Callable function to generate string identifier from geometry.
-    geometry_fn
-        Callable function to generate geometry from string identifier.
-        `None` if the algorithm has no defined inverse.
-    """
+    model_config = ConfigDict(arbitrary_types_allowed=True, validate_assignment=True)
 
-    algorithm: str
-    kind: str
+    name: str
+    kind: IdentityKind
+    parent_algorithm: Algorithm | None = None
+    deterministic: bool = True  # Indicates if this algorithm is deterministic
 
-    identity_fn: Callable[[Geometry, dict[str, Geometry] | None], str]
-    geometry_fn: Callable[[str], Geometry] | None = None
-
-
-class AlgorithmFns(ABC):
-    """Boilerplate for Algorithm functions class."""
-
-    @staticmethod
-    @abstractmethod
-    def identity_fn(
-        geo: Geometry, other_geos: dict[str, Geometry] | None = None
-    ) -> str:
-        """Generate an identifier string from a Geometry."""
-
-    @staticmethod
-    def geometry_fn(value: str) -> Geometry:
-        """Instantiate a Geometry from an identifier string."""
-        msg = f"Conversion of {value} to Geometry not implemented."
-        raise NotImplementedError(msg)
+    identity_fn: IdentityProtocol
+    geometry_fn: GeometryProtocol = default_geometry_fn
 
 
 class AlgorithmRegistry:
     """Central registry of all known identity algorithms."""
 
-    _algorithms: ClassVar[dict[str, AlgorithmDef]] = {}
+    algorithms: ClassVar[list[Algorithm]] = []
 
     @classmethod
-    def register(
-        cls, algorithm: str, kind: str
-    ) -> Callable[[type[AlgorithmFns]], type[AlgorithmFns]]:
-        """Register identity_fn and geometry_fn as an AlgorithmDef."""
-
-        def decorator(cls_: type[AlgorithmFns]) -> type[AlgorithmFns]:
-            if algorithm in cls._algorithms:
-                msg = f"Algorithm {algorithm!r} is already registered."
-                raise AlgorithmAlreadyRegisteredError(msg)
-            cls._algorithms[algorithm] = AlgorithmDef(
-                algorithm=algorithm,
-                kind=kind,
-                identity_fn=staticmethod(cls_.identity_fn),
-                geometry_fn=staticmethod(cls_.geometry_fn),
-            )
-            return cls_
-
-        return decorator
-
-    @classmethod
-    def register_def(cls, alg: AlgorithmDef) -> None:
-        """Directly register an AlgorithmDef instance."""
-        if alg.algorithm in cls._algorithms:
-            msg = f"Algorithm {alg.algorithm!r} is already registered."
+    def register(  # noqa: PLR0913
+        cls,
+        name: str,
+        kind: IdentityKind,
+        identity_fn: IdentityProtocol,
+        geometry_fn: GeometryProtocol = default_geometry_fn,
+        parent_algorithm: Algorithm | None = None,
+        *,
+        deterministic: bool = True,
+    ) -> Algorithm:
+        """Register an algorithm instance."""
+        if any(name == a.name for a in cls.algorithms):
+            msg = f"Algorithm {name!r} is already registered."
             raise AlgorithmAlreadyRegisteredError(msg)
-        cls._algorithms[alg.algorithm] = alg
+        algorithm = Algorithm.model_validate(
+            {
+                "name": name,
+                "kind": kind,
+                "parent_algorithm": parent_algorithm,
+                "deterministic": deterministic,
+                "identity_fn": identity_fn,
+                "geometry_fn": geometry_fn,
+            }
+        )
+        cls.algorithms.append(algorithm)
+        return algorithm
 
     @classmethod
-    def get(cls, algorithm: str) -> AlgorithmDef:
+    def get(cls, name: str) -> Algorithm:
         """Get an algorithm from registry."""
         try:
-            return cls._algorithms[algorithm]
-        except KeyError:
-            available = ", ".join(sorted(cls._algorithms))
-            msg = f"Unknown algorithm {algorithm!r}. Available: {available}"
+            return next(a for a in cls.algorithms if a.name == name)
+        except StopIteration:
+            available = ", ".join(sorted(a.name for a in cls.algorithms))
+            msg = f"Unknown algorithm {name!r}. Available: {available}"
             raise UnknownAlgorithmError(msg) from None
 
     @classmethod
     def all_algorithms(cls) -> list[str]:
         """Return all registered algorithms."""
-        return sorted(cls._algorithms)
+        return sorted(a.name for a in cls.algorithms)
 
     @classmethod
     def algorithms_for_kind(cls, kind: str) -> list[str]:
         """Return all registered algorithms for a kind."""
-        return sorted(a for a, d in cls._algorithms.items() if d.kind == kind)
+        return sorted(a.name for a in cls.algorithms if a.kind == kind)
 
 
-class Identity(BaseModel):
-    """
-    Molecular identity record.
-
-    Parameters
-    ----------
-    algorithm
-        Registered algorithm that produced this identity.
-    value
-        Resulting string identifier.
-    kind
-        Category of identity (e.g., "stereoisomer", "conformer"). Must match
-        the registered algorithm's kind; prefer `from_geometry` or
-        `from_value` over setting this directly.
-    """
-
-    algorithm: str
-    value: str
-    kind: str
-
-    @model_validator(mode="after")
-    def _validate_algorithm_kind(self) -> Identity:
-        expected_kind = AlgorithmRegistry.get(self.algorithm).kind
-        if self.kind != expected_kind:
-            msg = (
-                f"Algorithm {self.algorithm!r} belongs to kind "
-                f"{expected_kind!r}, not {self.kind!r}."
-            )
-            # Pydantic only wraps ValueError/TypeError/AssertionError from
-            # model validators into a ValidationError; anything else bypasses
-            # that pipeline entirely, so this must stay a plain ValueError.
-            raise ValueError(msg)
-        return self
-
-    @classmethod
-    def from_geometry(
-        cls,
-        geo: Geometry,
-        *,
-        algorithm: str,
-        other_geos: dict[str, Geometry] | None = None,
-    ) -> Self:
-        """Return an Identity from a Geometry, by algorithm alone."""
-        alg = AlgorithmRegistry.get(algorithm)
-        value = alg.identity_fn(geo, other_geos)
-        return cls.from_value(value, algorithm=algorithm)
-
-    @classmethod
-    def from_value(cls, value: str, *, algorithm: str) -> Self:
-        """Return an Identity from an already-computed value, by algorithm alone."""
-        kind = AlgorithmRegistry.get(algorithm).kind
-        return cls(algorithm=algorithm, value=value, kind=kind)
-
-    def geometry(self) -> Geometry:
-        """Return a Geometry from Identity instance."""
-        alg = AlgorithmRegistry.get(self.algorithm)
-        if alg.geometry_fn:
-            return alg.geometry_fn(self.value)
-        raise NotImplementedError
+def rdkit_inchi_geometry_fn(value: str) -> Geometry:
+    """Generate Geometry from InChI with RDKit."""
+    mol = Chem.MolFromInchi(value, sanitize=True, removeHs=False)
+    mol = Chem.AddHs(mol)
+    return geom.from_rdkit_mol(mol)
 
 
-@AlgorithmRegistry.register(RDKIT_INCHI, IdentityKind.STEREOISOMER)
-class RDKitInChI(AlgorithmFns):
-    """Identify geometry with InChI using RDKit."""
-
-    @staticmethod
-    def identity_fn(
-        geo: Geometry,
-        other_geos: dict[str, Geometry] | None = None,  # noqa: ARG004
-    ) -> str:
-        """Generate InChI from Geometry with RDKit."""
-        mol = geom.rdkit_mol(geo)
-        mol_block = Chem.rdmolfiles.MolToMolBlock(mol)
-        return Chem.inchi.MolBlockToInchi(mol_block)
-
-    @staticmethod
-    def geometry_fn(value: str) -> Geometry:
-        """Generate Geometry from InChI with RDKit."""
-        mol = Chem.MolFromInchi(value, sanitize=True, removeHs=False)
-        mol = Chem.AddHs(mol)
-        return geom.from_rdkit_mol(mol)
+def rdkit_inchi_identity_fn(
+    geo: Geometry,
+    other_geos: OTHER_GEOS = None,  # noqa: ARG001
+) -> str:
+    """Generate InChI from Geometry with RDKit."""
+    mol = geom.rdkit_mol(geo)
+    mol_block = Chem.rdmolfiles.MolToMolBlock(mol)
+    return Chem.inchi.MolBlockToInchi(mol_block)
 
 
-@AlgorithmRegistry.register(RDKIT_SMILES, IdentityKind.STEREOISOMER)
-class RDKitSMILES(AlgorithmFns):
-    """Identify or generate geometry with SMILES using RDKit."""
-
-    @staticmethod
-    def identity_fn(
-        geo: Geometry,
-        other_geos: dict[str, Geometry] | None = None,  # noqa: ARG004
-    ) -> str:
-        """Generate SMILES from Geometry with RDKit."""
-        mol = geom.rdkit_mol(geo)
-        return Chem.MolToSmiles(Chem.RemoveAllHs(mol))
-
-    @staticmethod
-    def geometry_fn(value: str) -> Geometry:
-        """Generate Geometry from SMILES with RDKit."""
-        mol = Chem.MolFromSmiles(value)
-        mol = Chem.AddHs(mol)
-        return geom.from_rdkit_mol(mol)
+rdkit_inchi = AlgorithmRegistry.register(
+    name="rdkit inchi",
+    kind=IdentityKind.STEREOISOMER,
+    identity_fn=rdkit_inchi_identity_fn,
+    geometry_fn=rdkit_inchi_geometry_fn,
+)
 
 
-@AlgorithmRegistry.register(HILL_FORMULA, IdentityKind.FORMULA)
-class HillFormula(AlgorithmFns):
-    """Identify geometry with its molecular formula in Hill order."""
+def rdkit_smiles_geometry_fn(value: str) -> Geometry:
+    """Generate Geometry from SMILES with RDKit."""
+    mol = Chem.MolFromSmiles(value)
+    mol = Chem.AddHs(mol)
+    return geom.from_rdkit_mol(mol)
 
-    @staticmethod
-    def identity_fn(
-        geo: Geometry,
-        other_geos: dict[str, Geometry] | None = None,  # noqa: ARG004
-    ) -> str:
-        """Render the molecular formula in Hill order."""
-        counts = Counter(s.capitalize() for s in geo.symbols)
 
-        ordered = []
-        if "C" in counts:
-            ordered.append(("C", counts.pop("C")))
-        if "H" in counts:
-            ordered.append(("H", counts.pop("H")))
-        ordered.extend(sorted(counts.items(), key=lambda x: x[0]))
+def rdkit_smiles_identity_fn(geo: Geometry, other_geos: OTHER_GEOS = None) -> str:
+    """Generate SMILES from Geometry with RDKit."""
+    inchi = rdkit_inchi.identity_fn(geo, other_geos)
+    if other_geos:
+        smiles = next(
+            s
+            for s, g in other_geos.items()
+            if rdkit_inchi.identity_fn(g, None) == inchi
+        )
+        if smiles:
+            return smiles
+    return Chem.MolToSmiles(Chem.RemoveAllHs(geom.rdkit_mol(geo)))
 
-        return "".join(s if n == 1 else f"{s}{n}" for s, n in ordered)
+
+rdkit_smiles = AlgorithmRegistry.register(
+    name="rdkit smiles",
+    kind=IdentityKind.STEREOISOMER,
+    deterministic=False,
+    parent_algorithm=rdkit_inchi,
+    identity_fn=rdkit_smiles_identity_fn,
+    geometry_fn=rdkit_smiles_geometry_fn,
+)
+
+
+def hill_formula_identity_fn(
+    geo: Geometry,
+    other_geos: OTHER_GEOS = None,  # noqa: ARG001
+) -> str:
+    """Render the molecular formula in Hill order."""
+    counts = Counter(s.capitalize() for s in geo.symbols)
+
+    ordered = []
+    if "C" in counts:
+        ordered.append(("C", counts.pop("C")))
+    if "H" in counts:
+        ordered.append(("H", counts.pop("H")))
+    ordered.extend(sorted(counts.items(), key=lambda x: x[0]))
+
+    return "".join(s if n == 1 else f"{s}{n}" for s, n in ordered)
+
+
+hill_formula = AlgorithmRegistry.register(
+    name="hill formula",
+    kind=IdentityKind.FORMULA,
+    deterministic=False,
+    parent_algorithm=rdkit_inchi,
+    identity_fn=hill_formula_identity_fn,
+)
