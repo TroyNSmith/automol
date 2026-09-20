@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Mapping
 from enum import StrEnum
 from typing import TYPE_CHECKING, ClassVar, Protocol, runtime_checkable
 
@@ -15,7 +16,9 @@ from .utils.exc import AlgorithmAlreadyRegisteredError, UnknownAlgorithmError
 if TYPE_CHECKING:
     from .geom import Geometry
 
-OTHER_GEOS = dict[str, "Geometry"] | None
+# `Mapping` (rather than `dict`) is covariant in its value type, so a mapping
+# of `Geometry` subclasses (e.g. `dict[str, SubGeometry]`) is accepted too.
+OTHER_GEOS = Mapping[str, "Geometry"] | None
 
 
 @runtime_checkable
@@ -61,9 +64,7 @@ class Algorithm(BaseModel):
     name: str
     kind: IdentityKind
     parent_algorithm: Algorithm | None = None
-    is_extra: bool = (
-        False  # Indicates if this algorithm is intended to produce consistent values
-    )
+    deterministic: bool = True  # Indicates if this algorithm is deterministic
 
     identity_fn: IdentityProtocol
     geometry_fn: GeometryProtocol = default_geometry_fn
@@ -83,7 +84,7 @@ class AlgorithmRegistry:
         geometry_fn: GeometryProtocol = default_geometry_fn,
         parent_algorithm: Algorithm | None = None,
         *,
-        is_extra: bool = False,
+        deterministic: bool = True,
     ) -> Algorithm:
         """Register an algorithm instance."""
         if any(name == a.name for a in cls.algorithms):
@@ -94,7 +95,7 @@ class AlgorithmRegistry:
                 "name": name,
                 "kind": kind,
                 "parent_algorithm": parent_algorithm,
-                "is_extra": is_extra,
+                "deterministic": deterministic,
                 "identity_fn": identity_fn,
                 "geometry_fn": geometry_fn,
             }
@@ -132,7 +133,7 @@ def rdkit_inchi_geometry_fn(value: str) -> Geometry:
 
 def rdkit_inchi_identity_fn(
     geo: Geometry,
-    other_geos: dict[str, Geometry] | None = None,  # noqa: ARG001
+    other_geos: OTHER_GEOS = None,  # noqa: ARG001
 ) -> str:
     """Generate InChI from Geometry with RDKit."""
     mol = geom.rdkit_mol(geo)
@@ -155,9 +156,7 @@ def rdkit_smiles_geometry_fn(value: str) -> Geometry:
     return geom.from_rdkit_mol(mol)
 
 
-def rdkit_smiles_identity_fn(
-    geo: Geometry, other_geos: dict[str, Geometry] | None = None
-) -> str:
+def rdkit_smiles_identity_fn(geo: Geometry, other_geos: OTHER_GEOS = None) -> str:
     """Generate SMILES from Geometry with RDKit."""
     inchi = rdkit_inchi.identity_fn(geo, other_geos)
     if other_geos:
@@ -174,7 +173,7 @@ def rdkit_smiles_identity_fn(
 rdkit_smiles = AlgorithmRegistry.register(
     name="rdkit smiles",
     kind=IdentityKind.STEREOISOMER,
-    is_extra=True,
+    deterministic=False,
     parent_algorithm=rdkit_inchi,
     identity_fn=rdkit_smiles_identity_fn,
     geometry_fn=rdkit_smiles_geometry_fn,
@@ -183,7 +182,7 @@ rdkit_smiles = AlgorithmRegistry.register(
 
 def hill_formula_identity_fn(
     geo: Geometry,
-    other_geos: dict[str, Geometry] | None = None,  # noqa: ARG001
+    other_geos: OTHER_GEOS = None,  # noqa: ARG001
 ) -> str:
     """Render the molecular formula in Hill order."""
     counts = Counter(s.capitalize() for s in geo.symbols)
@@ -201,7 +200,7 @@ def hill_formula_identity_fn(
 hill_formula = AlgorithmRegistry.register(
     name="hill formula",
     kind=IdentityKind.FORMULA,
-    is_extra=True,
+    deterministic=False,
     parent_algorithm=rdkit_inchi,
     identity_fn=hill_formula_identity_fn,
 )

@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Added
+- `Algorithm` `BaseModel` representing a registered algorithm as a standalone instance (`name`, `kind`, `identity_fn`, `geometry_fn`, `parent_algorithm`, `deterministic`), replacing the `AlgorithmDef` dataclass / `AlgorithmFns` ABC pair.
+- `IdentityProtocol` / `GeometryProtocol` (`@runtime_checkable` `Protocol`s) describing the `identity_fn` / `geometry_fn` callable shapes, replacing the `Callable[...]` type aliases used by `AlgorithmDef`.
+- `parent_algorithm` field on `Algorithm` / parameter on `AlgorithmRegistry.register(...)` so a non-canonical algorithm (e.g. `rdkit_smiles`, `hill_formula`) can disambiguate `other_geos` via a canonical parent (e.g. `rdkit_inchi`); `rdkit_smiles`'s `identity_fn` now returns the original (possibly non-canonical) SMILES from `other_geos` when its InChI matches, instead of always returning RDKit's canonical form.
+- `deterministic` field on `Algorithm` / parameter on `AlgorithmRegistry.register(...)` (default `True`) flagging whether an algorithm produces deterministic strings; `rdkit_smiles` and `hill_formula` are registered as non-deterministic.
+- Module-level `rdkit_inchi`, `rdkit_smiles`, `hill_formula` `Algorithm` instances, exported from the top-level `automol` namespace and called directly (`rdkit_inchi.identity_fn(...)`, `.geometry_fn(...)`) instead of through i`Identity`.
+- `OTHER_GEOS` type alias (`Mapping[str, Geometry] | None`) for the `other_geos` parameter.
+
+### Changed
+- `AlgorithmRegistry.register(...)` is now a plain classmethod that registers an `Algorithm` instance directly (`AlgorithmRegistry.register(name=..., kind=..., identity_fn=..., geometry_fn=...)`), instead of a decorator applied to an `AlgorithmFns` subclass.
+- `AlgorithmRegistry` stores algorithms in a public `algorithms: ClassVar[list[Algorithm]]` instead of a private `_algorithms: ClassVar[dict[str, AlgorithmDef]]`.
+
+### Removed
+- `Identity` `BaseModel` (`.from_geometry()`, `.from_value()`, `.geometry()`, and the `kind`/`algorithm` consistency validator) — replaced by calling `identity_fn` / `geometry_fn` directly on the registered `Algorithm` instances.
+- `AlgorithmDef` dataclass and `AlgorithmFns` ABC — superseded by the `Algorithm` model and `IdentityProtocol` / `GeometryProtocol`.
+- `AlgorithmRegistry.register_def()` — folded into `AlgorithmRegistry.register()`.
+- `RDKIT_INCHI`, `RDKIT_SMILES`, `HILL_FORMULA` string constants — replaced by the `rdkit_inchi`, `rdkit_smiles`, `hill_formula` `Algorithm` instances.
 
 ## [0.0.24] - 2026-09-11
 ### Added
