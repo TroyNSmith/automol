@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+
+## [0.0.25] - 2026-09-19
 ### Added
 - `Algorithm` `BaseModel` representing a registered algorithm as a standalone instance (`name`, `kind`, `identity_fn`, `geometry_fn`, `parent_algorithm`, `deterministic`), replacing the `AlgorithmDef` dataclass / `AlgorithmFns` ABC pair.
 - `IdentityProtocol` / `GeometryProtocol` (`@runtime_checkable` `Protocol`s) describing the `identity_fn` / `geometry_fn` callable shapes, replacing the `Callable[...]` type aliases used by `AlgorithmDef`.
